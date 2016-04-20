@@ -5,13 +5,29 @@ import os
 from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Network
 from collections import namedtuple
 import cPickle as pickle
-import random
+import logging
 
 from _pybgpstream import BGPStream, BGPRecord, BGPElem
 from pytricia import PyTricia
 
 from iplane import IPlaneTraceFile, Hop
 import peeringdb
+
+
+class M(object):
+    """Simple message class to allow to use {}-style formatting with the
+    logging module.  For details, see:
+
+    https://docs.python.org/3/howto/logging-cookbook.html#using-custom-message-objects
+
+    """
+    def __init__(self, fmt, *args, **kwargs):
+        self.fmt = fmt
+        self.args = args
+        self.kwargs = kwargs
+
+    def __str__(self):
+        return self.fmt.format(*self.args, **self.kwargs)
 
 
 class ASPathsAnalyser(object):
@@ -78,11 +94,9 @@ class ASPathsAnalyser(object):
         self.bgp_aspath = PyTricia()
         # Try to load from cache
         if self.load_ris_cache(filename):
-            msg = "[RIS] Loaded {} BGP prefixes from cache"
-            print(msg.format(len(self.bgp_origin)), file=sys.stderr)
-            msg = "[RIS] Loaded {} BGP prefixes from AS {} from cache"
-            print(msg.format(len(self.bgp_aspath), self.source_asn),
-                  file=sys.stderr)
+            logging.info(M("[RIS] Loaded {} BGP prefixes from cache", len(self.bgp_origin)))
+            logging.info(M("[RIS] Loaded {} BGP prefixes from AS {} from cache",
+                           len(self.bgp_aspath), self.source_asn))
             return
         # No cache, use BGPstream to parse the RIS dump.
         record = BGPRecord()
@@ -101,8 +115,7 @@ class ASPathsAnalyser(object):
                         elem = record.get_next_elem()
                         continue
                     if len(elem.fields['as-path']) == 0:
-                        print("Warning: prefix {} with empty AS-path".format(prefix),
-                              file=sys.stderr)
+                        logging.warning(M("Prefix {} with empty AS-path", prefix))
                         elem = record.get_next_elem()
                         continue
                     # First get the origin AS
@@ -125,13 +138,10 @@ class ASPathsAnalyser(object):
                                    for asn in elem.fields['as-path'].split(b' ')]
                         self.bgp_aspath[prefix] = as_path
                     elem = record.get_next_elem()
-        print("[RIS] Loaded {} BGP prefixes in total".format(len(self.bgp_origin)),
-              file=sys.stderr)
-        print("[RIS] Loaded {} BGP prefixes from AS {}".format(len(self.bgp_aspath),
-                                                               self.source_asn),
-              file=sys.stderr)
-        print("[RIS] Saving data to pickle cache",
-              file=sys.stderr)
+        logging.info(M("[RIS] Loaded {} BGP prefixes in total", len(self.bgp_origin)))
+        logging.info(M("[RIS] Loaded {} BGP prefixes from AS {}",
+                       len(self.bgp_aspath), self.source_asn))
+        logging.info("[RIS] Saving data to pickle cache")
         self.save_ris_cache(filename)
 
     def ris_origin_asn(self, ip):
@@ -156,13 +166,11 @@ class ASPathsAnalyser(object):
     def load_peeringdb(self):
         p = peeringdb.PeeringDB('.')
         self.ix_prefixes = [ip_network(prefix) for prefix in p.prefixes_ipv4()]
-        print("[peeringdb] Loaded {} prefixes".format(len(self.ix_prefixes)),
-              file=sys.stderr)
+        logging.info(M("[peeringdb] Loaded {} prefixes", len(self.ix_prefixes)))
         # Normalise keys (mostly useful for IPv6, where a single IP
         # can have many string representations)
         self.ix_ip = {ip_address(ip_str): int(asn) for (ip_str, asn) in p.ipv4_asn()}
-        print("[peeringdb] Loaded {} exact IP-ASN matches".format(len(self.ix_ip)),
-              file=sys.stderr)
+        logging.info(M("[peeringdb] Loaded {} exact IP-ASN matches", len(self.ix_ip)))
 
     def is_in_ix(self, ip):
         # Linear search is OK performance-wise, we only have a few
@@ -206,9 +214,10 @@ class ASPathsAnalyser(object):
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
         # Debug:
-        print(' '.join([hop.ip for hop in traceroute.hops]))
-        print(aspath)
-        print(bgp_aspath)
+        logging.debug(' '.join([hop.ip for hop in traceroute.hops]))
+        logging.debug(aspath)
+        logging.debug(bgp_aspath)
+        logging.debug('--')
 
     def analyse_traceroutes(self, filename):
         with IPlaneTraceFile(filename) as f:
@@ -217,6 +226,9 @@ class ASPathsAnalyser(object):
 
 
 if __name__ == '__main__':
+    # TODO: change the logging level using a command-line argument
+    logging.basicConfig(format='%(message)s',
+                        level=logging.DEBUG)
     source_asn = int(sys.argv[1])
     a = ASPathsAnalyser(source_asn)
     a.load_peeringdb()
