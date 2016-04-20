@@ -1,8 +1,10 @@
 from __future__ import print_function, unicode_literals
 
 import sys
+import os
 from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Network
 from collections import namedtuple
+import cPickle as pickle
 import random
 
 from _pybgpstream import BGPStream, BGPRecord, BGPElem
@@ -14,16 +16,68 @@ import peeringdb
 
 class ASPathsAnalyser(object):
     IPV4_NULLADDRESS = IPv4Address("0.0.0.0")
+    CACHE_BASEDIR = "cache"
 
     def __init__(self, source_asn):
         self.source_asn = source_asn
 
+    def ris_cache_filename(self, ris_filename):
+        """Use the input filename and source ASN to determine a cache filename"""
+        ris_filename = os.path.basename(ris_filename)
+        return os.path.join(self.CACHE_BASEDIR,
+                            ris_filename + "_" + str(self.source_asn) + ".pickle")
+
+    def save_ris_cache(self, ris_filename):
+        """Dump bgp_origin and bgp_aspath to a file for later reuse"""
+        try:
+            os.mkdir(self.CACHE_BASEDIR)
+        except OSError:
+            pass
+        cachename = self.ris_cache_filename(ris_filename)
+        # PyTricia objects cannot be pickled, we need to transform
+        # them first.
+        serialise = lambda tree: tuple((prefix, tree[prefix]) for prefix in tree)
+        obj = (serialise(self.bgp_origin), serialise(self.bgp_aspath))
+        with open(cachename, "w") as f:
+            pickle.dump(obj, f)
+
+    def load_ris_cache(self, ris_filename):
+        """Try to load bgp_origin and bgp_aspath from cache, returns True if
+        successful"""
+        cachename = self.ris_cache_filename(ris_filename)
+        if not os.path.isfile(cachename):
+            return False
+        with open(cachename, "r") as f:
+            # TODO: handle more pickle exceptions
+            try:
+                (bgp_origin, bgp_aspath) = pickle.load(f)
+            except EOFError:
+                return False
+        def deserialise(obj):
+            p = PyTricia()
+            for (prefix, value) in obj:
+                p[prefix] = value
+            return p
+        self.bgp_origin = deserialise(bgp_origin)
+        self.bgp_aspath = deserialise(bgp_aspath)
+        return True
+
     def load_ris(self, filename):
-        """Loads a full RIS BGP table and store it in prefix trees for later use"""
+        """Loads a full RIS BGP table and store it in prefix trees for later use.
+        A pickled cache is kept to avoid recomputing prefix trees."""
         # This maps each IP prefix to a set of origin AS (singleton except for MOAS)
         self.bgp_origin = PyTricia()
         # This maps each IP prefix to its AS path as seen by self.source_asn
         self.bgp_aspath = PyTricia()
+        # Try to load from cache
+        if self.load_ris_cache(filename):
+            msg = "[RIS] Loaded {} BGP prefixes from cache"
+            print(msg.format(len(self.bgp_origin)), file=sys.stderr)
+            msg = "[RIS] Loaded {} BGP prefixes from AS {} from cache"
+            print(msg.format(len(self.bgp_aspath), self.source_asn),
+                  file=sys.stderr)
+            return
+        # No cache, use BGPstream to parse the RIS dump.
         record = BGPRecord()
         stream = BGPStream()
         stream.set_data_interface("singlefile")
@@ -69,6 +123,9 @@ class ASPathsAnalyser(object):
         print("[RIS] Loaded {} BGP prefixes from AS {}".format(len(self.bgp_aspath),
                                                                self.source_asn),
               file=sys.stderr)
+        print("[RIS] Saving data to pickle cache",
+              file=sys.stderr)
+        self.save_ris_cache(filename)
 
     def ris_origin_asn(self, ip):
         """Returns a set of origin ASN for the given IP address, by looking at
