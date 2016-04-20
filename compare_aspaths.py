@@ -7,7 +7,7 @@ import random
 
 from _pybgpstream import BGPStream, BGPRecord, BGPElem
 
-from iplane import IPlaneTraceFile
+from iplane import IPlaneTraceFile, Hop
 import peeringdb
 
 
@@ -142,9 +142,8 @@ class ASPathsAnalyser(object):
 
     def traceroute_aspath(self, traceroute):
         """Given a traceroute, compute an AS-path."""
-        dest = traceroute.dest
         aspath = []
-        for ip_str in [hop.ip for hop in traceroute.hops] + [dest]:
+        for ip_str in [hop.ip for hop in traceroute.hops]:
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
             if asn != None:
@@ -153,6 +152,10 @@ class ASPathsAnalyser(object):
         return aspath
 
     def analyse_traceroute(self, traceroute):
+        # Add the destination as final hop if it's not already the case
+        if ip_address(traceroute.hops[-1].ip) != ip_address(traceroute.dest):
+            final_hop = Hop(traceroute.dest, 0., 0)
+            traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.ris_aspath(ip_address(traceroute.dest))
         # Debug:
