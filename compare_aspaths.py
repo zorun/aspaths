@@ -30,16 +30,10 @@ class ASPathsAnalyser(object):
         stream.set_data_interface_option("singlefile", "rib-file", filename)
         # Add additional filters here
         stream.start()
-        count = 0
         while(stream.get_next_record(record)):
             if record.status == "valid":
                 elem = record.get_next_elem()
                 while(elem):
-                    count += 1
-                    # for testing: only pick one element in X
-                    if count % 2 != 0:
-                    # Warning: this discards a lot of data!
-                        break
                     prefix = elem.fields['prefix']
                     # Discard IPv6 prefixes (crude but fast)
                     if ':' in prefix:
