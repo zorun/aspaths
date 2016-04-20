@@ -28,7 +28,14 @@ class ASPathsAnalyser(object):
                             ris_filename + "_" + str(self.source_asn) + ".pickle")
 
     def save_ris_cache(self, ris_filename):
-        """Dump bgp_origin and bgp_aspath to a file for later reuse"""
+        """Dump bgp_origin and bgp_aspath to a file for later reuse.
+
+        Experiments on a full RIB from RIS collector rrc12 show a
+        14-times improvement in loading time (16 seconds vs. 232
+        seconds), but also an increase in RAM usage while
+        pickling/unpickling (1042 MB peak usage when saving, 777 MB
+        peak usage when loading, 554 MB peak usage without cache).
+        """
         try:
             os.mkdir(self.CACHE_BASEDIR)
         except OSError:
