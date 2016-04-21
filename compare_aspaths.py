@@ -1,4 +1,4 @@
-from __future__ import print_function, unicode_literals
+from __future__ import print_function, unicode_literals, division
 
 import sys
 import os
@@ -55,6 +55,11 @@ class ASPathsAnalyser(object):
 
     def __init__(self, source_asn):
         self.source_asn = source_asn
+        # Count the number of matches for each class (beware, they are
+        # not mutually exclusive).
+        self.matches = Counter()
+        # Number of traceroutes processed
+        self.nb_traceroutes = 0
 
     def ris_cache_filename(self, ris_filename):
         """Use the input filename and source ASN to determine a cache filename"""
@@ -341,6 +346,8 @@ class ASPathsAnalyser(object):
         bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
         matches = self.classify_match(aspath, bgp_aspath)
         logging.debug(M("Matches for {}: {}", traceroute.dest, ' '.join([m.name for m in matches])))
+        self.matches.update(matches)
+        self.nb_traceroutes += 1
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
                 self.debug_aspaths(aspath, bgp_aspath)
@@ -351,6 +358,13 @@ class ASPathsAnalyser(object):
         with IPlaneTraceFile(filename) as f:
             for traceroute in f:
                 self.analyse_traceroute(traceroute)
+        print("Breakdown of match classes (not mutually exclusive!):")
+        for (match_class, count) in self.matches.items():
+            print("{:24} {:6}  {:6.2%}  {}".format(match_class.name,
+                                           count,
+                                           count / self.nb_traceroutes,
+                                           match_class.value))
+        print("{:24} {:6} {:6.2%}".format("Total", self.nb_traceroutes, 1))
 
 
 if __name__ == '__main__':
