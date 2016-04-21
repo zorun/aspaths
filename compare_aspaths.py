@@ -184,12 +184,19 @@ class ASPathsAnalyser(object):
 
     def ip_to_asn(self, ip):
         """Translate an IP address to a set of ASN, using peeringdb and RIS.
-        Returns empty set if the IP is part of an IX or if no ASN can be found."""
-        # TODO: MOAS?
+        Returns empty set if either:
+          - the IP is a private or reserved address
+          - the IP is part of an IX
+          - no ASN can be found."""
         # TODO: distinguish IXP and no match
         assert(isinstance(ip, (IPv4Address, IPv6Address)))
-        # 0.0.0.0 represents an empty hop (and is an unusable IP anyway)
-        if ip == self.IPV4_NULLADDRESS:
+        # Discard private, link-local, loopback, reserved, etc
+        if ip.is_private or \
+           ip.is_link_local or \
+           ip.is_reserved or \
+           ip.is_multicast or \
+           ip.is_unspecified or \
+           ip.is_loopback:
             return set()
         # Exact match in peeringdb
         if ip in self.ix_ip:
