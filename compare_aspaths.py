@@ -6,6 +6,7 @@ from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Netw
 from collections import namedtuple
 import cPickle as pickle
 import logging
+import socket
 
 from _pybgpstream import BGPStream, BGPRecord, BGPElem
 from pytricia import PyTricia
@@ -202,10 +203,13 @@ class ASPathsAnalyser(object):
     def traceroute_aspath(self, traceroute):
         """Given a traceroute, compute an AS-path."""
         aspath = []
-        for ip_str in [hop.ip for hop in traceroute.hops]:
+        hops = [hop.ip for hop in traceroute.hops]
+        for ip_str in hops:
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
             aspath.append(asn)
+        if logging.root.isEnabledFor(logging.DEBUG):
+            self.debug_traceroute(hops, aspath)
         # Step 1: flatten any sequence of the form A * A where * is
         # unknown, recursively.
         while True:
@@ -216,6 +220,33 @@ class ASPathsAnalyser(object):
             aspath = new_aspath
         return aspath
 
+    def debug_traceroute(self, hops, aspath):
+        """Pretty-print a traceroute with reverse DNS and inferred ASN for
+        each hop."""
+        data = list()
+        max_len = [1, 1, 1]
+        for (ip, asn_set) in zip(hops, aspath):
+            if ip == "0.0.0.0":
+                data.append(('X', 'X', 'X'))
+            else:
+                if len(asn_set) == 0:
+                    asn = 'X'
+                else:
+                    asn = ','.join(str(asn) for asn in sorted(asn_set))
+                hostname = socket.getfqdn(ip)
+                if hostname == ip:
+                    hostname = 'X'
+                data.append((ip, asn, hostname))
+                max_len[0] = max(max_len[0], len(ip))
+                max_len[1] = max(max_len[1], len(asn))
+                max_len[2] = max(max_len[2], len(hostname))
+        for (ip, asn, hostname) in data:
+            line = {'ip': ip, 'ip_len': max_len[0] + 1,
+                    'asn': asn, 'asn_len': max_len[1] + 1,
+                    'hostname': hostname, 'hostname_len': max_len[2] + 1}
+            logging.debug(M('{ip:{ip_len}} {asn:{asn_len}} {hostname:{hostname_len}}',
+                            **line))
+
     def analyse_traceroute(self, traceroute):
         # Add the destination as final hop if it's not already the case
         if ip_address(traceroute.hops[-1].ip) != ip_address(traceroute.dest):
@@ -224,7 +255,6 @@ class ASPathsAnalyser(object):
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
         # Debug:
-        logging.debug(' '.join([hop.ip for hop in traceroute.hops]))
         logging.debug(aspath)
         logging.debug(bgp_aspath)
         logging.debug('--')
