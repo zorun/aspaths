@@ -12,6 +12,7 @@ from pytricia import PyTricia
 
 from iplane import IPlaneTraceFile, Hop
 import peeringdb
+import utils
 
 
 class M(object):
@@ -156,10 +157,12 @@ class ASPathsAnalyser(object):
 
     def ris_aspath_from_source(self, ip):
         """Returns the AS-path for the most specific prefix seen by
-        self.source_asn.  If no prefix is found, None is returned.
+        self.source_asn, with AS-path prepending removed.  If no
+        prefix is found, None is returned.
         """
         try:
-            return self.bgp_aspath[ip]
+            raw_path = self.bgp_aspath[ip]
+            return list(utils.uniq(raw_path))
         except KeyError:
             return None
 
