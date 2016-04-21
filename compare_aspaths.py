@@ -159,13 +159,13 @@ class ASPathsAnalyser(object):
     def ris_aspath_from_source(self, ip):
         """Returns the AS-path for the most specific prefix seen by
         self.source_asn, with AS-path prepending removed.  If no
-        prefix is found, None is returned.
+        prefix is found, an empty list is returned.
         """
         try:
             raw_path = self.bgp_aspath[ip]
             return list(utils.uniq(raw_path))
         except KeyError:
-            return None
+            return []
 
     def load_peeringdb(self):
         p = peeringdb.PeeringDB('.')
