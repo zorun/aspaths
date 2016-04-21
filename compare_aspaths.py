@@ -87,6 +87,14 @@ class ASPathsAnalyser(object):
         self.bgp_aspath = deserialise(bgp_aspath)
         return True
 
+    def ris_remove_default_route(self):
+        if self.bgp_origin.has_key(b'0.0.0.0/0'):
+            self.bgp_origin.delete(b'0.0.0.0/0')
+            logging.info("[RIS] Removed default route in bgp_origin")
+        if self.bgp_aspath.has_key(b'0.0.0.0/0'):
+            self.bgp_aspath.delete(b'0.0.0.0/0')
+            logging.info("[RIS] Removed default route in bgp_aspath")
+
     def load_ris(self, filename):
         """Loads a full RIS BGP table and store it in prefix trees for later use.
         A pickled cache is kept to avoid recomputing prefix trees."""
@@ -99,6 +107,7 @@ class ASPathsAnalyser(object):
             logging.info(M("[RIS] Loaded {} BGP prefixes from cache", len(self.bgp_origin)))
             logging.info(M("[RIS] Loaded {} BGP prefixes from AS {} from cache",
                            len(self.bgp_aspath), self.source_asn))
+            self.ris_remove_default_route()
             return
         # No cache, use BGPstream to parse the RIS dump.
         record = BGPRecord()
@@ -140,6 +149,7 @@ class ASPathsAnalyser(object):
                                    for asn in elem.fields['as-path'].split(b' ')]
                         self.bgp_aspath[prefix] = as_path
                     elem = record.get_next_elem()
+        self.ris_remove_default_route()
         logging.info(M("[RIS] Loaded {} BGP prefixes in total", len(self.bgp_origin)))
         logging.info(M("[RIS] Loaded {} BGP prefixes from AS {}",
                        len(self.bgp_aspath), self.source_asn))
