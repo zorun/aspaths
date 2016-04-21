@@ -208,7 +208,9 @@ class ASPathsAnalyser(object):
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
             aspath.append(asn)
-        # Step 1: flatten any sequence of the form A * A where * is
+        # Step 1: add the source ASN in front
+        aspath.insert(0, {self.source_asn})
+        # Step 2: flatten any sequence of the form A * A where * is
         # unknown, recursively.
         while True:
             new_aspath = list(utils.uniq(aspath))
