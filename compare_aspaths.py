@@ -208,8 +208,6 @@ class ASPathsAnalyser(object):
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
             aspath.append(asn)
-        if logging.root.isEnabledFor(logging.DEBUG):
-            self.debug_traceroute(hops, aspath)
         # Step 1: flatten any sequence of the form A * A where * is
         # unknown, recursively.
         while True:
@@ -220,15 +218,17 @@ class ASPathsAnalyser(object):
             aspath = new_aspath
         return aspath
 
-    def debug_traceroute(self, hops, aspath):
+    def debug_traceroute(self, traceroute):
         """Pretty-print a traceroute with reverse DNS and inferred ASN for
         each hop."""
         data = list()
         max_len = [1, 1, 1]
-        for (ip, asn_set) in zip(hops, aspath):
+        hops = [hop.ip for hop in traceroute.hops]
+        for ip in hops:
             if ip == "0.0.0.0":
                 data.append(('X', 'X', 'X'))
             else:
+                asn_set = self.ip_to_asn(ip_address(ip))
                 if len(asn_set) == 0:
                     asn = 'X'
                 else:
@@ -247,6 +247,28 @@ class ASPathsAnalyser(object):
             logging.debug(M('{ip:{ip_len}} {asn:{asn_len}} {hostname:{hostname_len}}',
                             **line))
 
+    def debug_aspaths(self, traceroute_aspath, bgp_aspath):
+        def format_asnset(asnset):
+            if len(asnset) == 0:
+                return 'X'
+            if len(asnset) == 1:
+                return str(list(asnset)[0])
+            # Yes, it looks complicated, but it isn't (will print "{foo,bar}")
+            return '{{{}}}'.format(','.join(str(asn) for asn in sorted(asnset)))
+        traceroute = '  '.join(format_asnset(asnset) for asnset in traceroute_aspath)
+        bgp = '  '.join(str(asn) for asn in bgp_aspath)
+        logging.debug(M("BGP AS-path:        {}", bgp))
+        logging.debug(M("Traceroute AS-path: {}", traceroute))
+
+    def is_consistent(self, traceroute_aspath, bgp_aspath):
+        """Compares the AS-path inferred by traceroute with the BGP AS-path"""
+        if len(traceroute_aspath) != len(bgp_aspath):
+            return False
+        for (traceroute_asnset, bgp_asn) in zip(traceroute_aspath, bgp_aspath):
+            if not bgp_asn in traceroute_asnset:
+                return False
+        return True
+
     def analyse_traceroute(self, traceroute):
         # Add the destination as final hop if it's not already the case
         if ip_address(traceroute.hops[-1].ip) != ip_address(traceroute.dest):
@@ -254,10 +276,11 @@ class ASPathsAnalyser(object):
             traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
-        # Debug:
-        logging.debug(aspath)
-        logging.debug(bgp_aspath)
-        logging.debug('--')
+        if not self.is_consistent(aspath, bgp_aspath):
+            if logging.root.isEnabledFor(logging.DEBUG):
+                self.debug_aspaths(aspath, bgp_aspath)
+                self.debug_traceroute(traceroute)
+                logging.debug('--')
 
     def analyse_traceroutes(self, filename):
         with IPlaneTraceFile(filename) as f:
