@@ -206,7 +206,14 @@ class ASPathsAnalyser(object):
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
             aspath.append(asn)
-        # TODO: post-process the raw AS-path
+        # Step 1: flatten any sequence of the form A * A where * is
+        # unknown, recursively.
+        while True:
+            new_aspath = list(utils.uniq(aspath))
+            new_aspath = list(utils.flatten_unknown(new_aspath))
+            if new_aspath == aspath:
+                break
+            aspath = new_aspath
         return aspath
 
     def analyse_traceroute(self, traceroute):
