@@ -3,10 +3,11 @@ from __future__ import print_function, unicode_literals
 import sys
 import os
 from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Network
-from collections import namedtuple
+from collections import namedtuple, Counter
 import cPickle as pickle
 import logging
 import socket
+from enum import Enum
 
 from _pybgpstream import BGPStream, BGPRecord, BGPElem
 from pytricia import PyTricia
@@ -30,6 +31,22 @@ class M(object):
 
     def __str__(self):
         return self.fmt.format(*self.args, **self.kwargs)
+
+
+class BGPTracerouteMatch(Enum):
+    """
+    Compare AS paths obtained by traceroute and those obtained by BGP, by classifying them.
+
+    Note that the classes are not mutually exclusive!
+    """
+    exact_match = "Exact match"
+    exact_match_only_known = "Exact match after removing unknown hops in traceroute"
+    missing_in_bgp = "BGP AS-path is a strict subsequence of traceroute path"
+    missing_in_traceroute = "Traceroute AS-path is a strict subsequence of BGP path"
+    distinct_asn = "Both BGP and traceroute AS-paths exhibit distinct ASN"
+    distinct_but_same_second = "Both AS-paths exhibit distinct ASN, but the second known ASN is the same"
+    no_bgp = "Empty BGP AS-path"
+    traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
 
 
 class ASPathsAnalyser(object):
@@ -279,14 +296,41 @@ class ASPathsAnalyser(object):
         logging.debug(M("BGP AS-path:        {}", bgp))
         logging.debug(M("Traceroute AS-path: {}", traceroute))
 
-    def is_consistent(self, traceroute_aspath, bgp_aspath):
-        """Compares the AS-path inferred by traceroute with the BGP AS-path"""
-        if len(traceroute_aspath) != len(bgp_aspath):
-            return False
-        for (traceroute_asnset, bgp_asn) in zip(traceroute_aspath, bgp_aspath):
-            if not bgp_asn in traceroute_asnset:
-                return False
-        return True
+    def classify_match(self, trace_path, bgp_path):
+        """Classify the relation between a traceroute AS path and a BGP AS path.
+        Returns a set of BGPTracerouteMatch enum members"""
+        res = set()
+        if len(trace_path) == len(bgp_path) \
+           and all([asn in asnset for (asnset, asn) in zip(trace_path, bgp_path)]):
+            res.add(BGPTracerouteMatch.exact_match)
+        trace_path_only_known = [asnset for asnset in trace_path if len(asnset) > 0]
+        if len(trace_path_only_known) == len(bgp_path) \
+           and all([asn in asnset for (asnset, asn) in zip(trace_path_only_known, bgp_path)]):
+            res.add(BGPTracerouteMatch.exact_match_only_known)
+        else:
+            # In this branch, we didn't have an exact match, so the
+            # subsequence must be strict.
+            if utils.is_subsequence_set2(bgp_path, trace_path_only_known):
+                res.add(BGPTracerouteMatch.missing_in_bgp)
+            if utils.is_subsequence_set1(trace_path_only_known, bgp_path):
+                res.add(BGPTracerouteMatch.missing_in_traceroute)
+        # TODO: is this correct?
+        bgp_ases = set(bgp_path)
+        traceroute_ases = set()
+        for asnset in trace_path:
+            traceroute_ases.update(asnset)
+        inter = traceroute_ases.intersection(bgp_ases)
+        if inter != traceroute_ases and inter != bgp_ases:
+            res.add(BGPTracerouteMatch.distinct_asn)
+            if len(trace_path_only_known) >= 2 and len(bgp_path) >= 2 \
+               and bgp_path[1] in trace_path_only_known[1]:
+                res.add(BGPTracerouteMatch.distinct_but_same_second)
+        if len(bgp_path) == 0:
+            res.add(BGPTracerouteMatch.no_bgp)
+        occurrences = Counter([frozenset(asnset) for asnset in trace_path])
+        if occurrences.most_common(1)[0][1] > 1:
+            res.add(BGPTracerouteMatch.traceroute_loop)
+        return res
 
     def analyse_traceroute(self, traceroute):
         # Add the destination as final hop if it's not already the case
@@ -295,7 +339,9 @@ class ASPathsAnalyser(object):
             traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
-        if not self.is_consistent(aspath, bgp_aspath):
+        matches = self.classify_match(aspath, bgp_aspath)
+        logging.debug(M("Matches for {}: {}", traceroute.dest, ' '.join([m.name for m in matches])))
+        if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
                 self.debug_aspaths(aspath, bgp_aspath)
                 self.debug_traceroute(traceroute)

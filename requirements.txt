@@ -1,0 +1,5 @@
+# Dependencies for python2
+enum34==1.1.2
+pytricia==0.9.0
+ipaddress==1.0.16
+pybgpstream==1.1.0
