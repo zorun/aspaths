@@ -12,6 +12,31 @@ import binascii
 from utils import open_compressed
 
 
+# TODO: switch to the new enum module
+# Codes used in the 'tracetyp' flag
+TRACEROUTE_TYPE = {
+  1: "ICMP_ECHO",       # ICMP echo requests
+  2: "UDP",             # UDP to unused ports
+  3: "TCP",             # TCP SYN packets
+  4: "ICMP_ECHO_PARIS", # paris traceroute
+  5: "UDP_PARIS",       # paris traceroute
+  6: "TCP_ACK",         # TCP ACK packets
+}
+
+# Codes used in the 'stopreas' flag
+TRACEROUTE_STOP = {
+  0: "NONE",
+  1: "COMPLETED", # got an ICMP port unreach
+  2: "UNREACH",   # got an other ICMP unreach code
+  3: "ICMP",      # got an ICMP msg, not unreach
+  4: "LOOP",      # loop detected
+  5: "GAPLIMIT",  # gaplimit reached
+  6: "ERROR",     # sendto error
+  7: "HOPLIMIT",  # hoplimit reached
+  8: "GSS",       # found hop in global stop set
+  9: "HALTED",    # halted
+}
+
 class WartsReader(object):
   """
   Reader for the warts format, used by Scamper.
