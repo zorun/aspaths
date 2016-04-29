@@ -4,6 +4,20 @@
 This scripts takes BGP data from RIS (mrtdump RIB dumps), and
 outputs a list of IP address to be used as destination of traceroute
 measurements.
+
+Method:
+
+- load data from all RIS collectors
+- for each origin AS x:
+  - consider all prefixes originated by x
+  - remove any prefix that has a least one more-specific prefix
+  - pick prefixes at random (at most 10)
+  - for each of these prefixes:
+    - pick the first usable IP address that does not overlap with a
+      more specific prefix from a different origin AS
+
+Note: we allow overlapping prefixes when they have different origin AS.
+
 """
 
 from __future__ import unicode_literals, print_function
