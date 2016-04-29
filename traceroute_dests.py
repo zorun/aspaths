@@ -56,12 +56,14 @@ class PyTriciav6(PyTricia):
 
 class RIS(object):
 
-    def load_mrtdump(self, filename):
+    def __init__(self):
         self.all_prefixesv4 = PyTricia()
         self.all_prefixesv6 = PyTricia(128)
         # Mapping from origin AS to a prefix tree
         self.origin_prefixesv4 = defaultdict(PyTricia)
         self.origin_prefixesv6 = defaultdict(PyTriciav6)
+
+    def load_mrtdump(self, filename):
         record = BGPRecord()
         stream = BGPStream()
         stream.set_data_interface("singlefile")
