@@ -13,6 +13,16 @@ from utils import open_compressed
 
 
 class WartsReader(object):
+  """
+  Reader for the warts format, used by Scamper.
+
+  Usage for traceroute:
+
+  >>> w = WartsReader("foo.warts.bz2")
+  >>> for (flags, hops) in w.read_all():
+  >>>     print(flags, hops)
+
+  """
   def __init__(self, wartsfile, verbose=False):
     self.address_ref = dict()
     self.verbose = verbose
@@ -139,22 +149,27 @@ class WartsReader(object):
      ('txtime', self.read_timeval),
     ]
 
-  def next(self):
+  def read_all(self):
     while True:
       (obj, length) = self.read_header()
-      if obj == -1: return (False, False)
+      if obj == -1:
+        raise StopIteration
       #print("Object: %02x Len: %d" % (obj, length))
-      if obj == 0x01: self.read_list()
-      elif obj == 0x02: self.read_cycle()
-      elif obj == 0x03: self.read_cycle()
-      elif obj == 0x04: self.read_cycle_stop()
+      if obj == 0x01:
+        self.read_list()
+      elif obj == 0x02:
+        self.read_cycle()
+      elif obj == 0x03:
+        self.read_cycle()
+      elif obj == 0x04:
+        self.read_cycle_stop()
       elif obj == 0x05: 
         self.deprecated_addresses = True
         self.read_old_address()
       elif obj == 0x06: 
-        return self.read_trace()
+        yield self.read_trace()
       elif obj == 0x07: 
-        return self.read_ping()
+        yield self.read_ping()
       else: 
         print("Unsupported object: %02x Len: %d" % (obj, length))
 
