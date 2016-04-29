@@ -206,21 +206,21 @@ class WartsReader:
         del hflags['icmp']
       hops.append(hflags)
       if self.verbose: print "\t", hflags
-    end = WartsReader.read_uint16_t(self.fd)
+    end = self.read_uint16_t(self.fd)
     assert (end == 0)
     return (flags, hops)
 
   def read_ping(self):
     if not self.deprecated_addresses:
       self.address_ref.clear()
-    flags = read_flags(ping_flags)
-    if verbose: print "Ping Params:", flags
-    rcount = read_uint16_t(self.fd)
+    flags = self.read_flags(ping_flags)
+    if self.verbose: print "Ping Params:", flags
+    rcount = self.read_uint16_t(self.fd)
     pings = []
     for i in range(rcount):
-      ping = read_flags(ping_reply_flags)
+      ping = self.read_flags(ping_reply_flags)
       pings.append(ping)
-      if verbose: print "Reply %d: %s:" % (i+1, ping)
+      if self.verbose: print "Reply %d: %s:" % (i+1, ping)
     return (flags, pings)
 
   def read_list(self):
@@ -265,8 +265,8 @@ class WartsReader:
     """ Read a warts deprecated (type 5) style referenced address """
     # deprecated address references start at 1
     addr_id = len(self.address_ref) + 1
-    id_mod = read_uint8_t(self.fd)
-    typ = read_uint8_t(self.fd)
+    id_mod = self.read_uint8_t(self.fd)
+    typ = self.read_uint8_t(self.fd)
     # "reader...can sanity check the ID number it determines by comparing the
     # lower 8 bits of the computed ID with the ID that is embedded in the record"
     assert(addr_id % 255 == id_mod)
@@ -284,18 +284,18 @@ class WartsReader:
 
   def read_address(self, fd):
     """ read a warts-style ip/mac address """
-    length = WartsReader.read_uint8_t(self.fd)
+    length = self.read_uint8_t(self.fd)
     addr = 0
     typ = 0
     # an embedded (non-referenced) address
     if length != 0:
-      typ = WartsReader.read_uint8_t(fd)
+      typ = self.read_uint8_t(fd)
       addr = self.fd.read(length)
       addr_id = len(self.address_ref)
       self.address_ref[addr_id] = addr 
     # a referenced address
     else:
-      addr_id = WartsReader.read_uint32_t(fd)
+      addr_id = self.read_uint32_t(fd)
       try:
         addr = self.address_ref[addr_id]
       except:
