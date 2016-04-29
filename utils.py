@@ -79,7 +79,7 @@ def open_compressed(infile):
         fd.read(1)
         fd = bz2.BZ2File(infile, 'rb')
         return fd
-    except IOError, e:
+    except IOError as e:
         pass
     # try reading as a gzip file
     try:
@@ -87,6 +87,6 @@ def open_compressed(infile):
         fd.read(1)
         fd = gzip.open(infile, 'rb')
         return fd
-    except IOError, e:
+    except IOError as e:
         pass
     return open(infile, 'rb')
