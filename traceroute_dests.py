@@ -85,6 +85,7 @@ class RIS(object):
         stream.set_data_interface_option("singlefile", "rib-file", filename)
         stream.start()
         logging.info(M("Started parsing file {}", filename))
+        nb_too_specifics = 0
         while(stream.get_next_record(record)):
             if record.status == "valid":
                 elem = record.get_next_elem()
@@ -97,7 +98,8 @@ class RIS(object):
                     prefix_net = ip_network(prefix.decode())
                     # Remove any prefix smaller than /126 or /30
                     if prefix_net.num_addresses <= 4:
-                        logging.warning(M("Ignored too specific route {}", prefix))
+                        logging.debug(M("Ignored too specific route {}", prefix))
+                        nb_too_specifics += 1
                         elem = record.get_next_elem()
                         continue
                     if prefix_net.prefixlen == 0:
@@ -120,6 +122,8 @@ class RIS(object):
                         self.origin_prefixesv4[origin][prefix] = None
                     elem = record.get_next_elem()
         logging.info(M("Done parsing file {}", filename))
+        if nb_too_specifics > 0:
+            logging.warning(M("Ignored {} routes that were too specific", nb_too_specifics))
         logging.info(M("Now having {} IPv4 prefixes, {} IPv6 prefixes, {} IPv4 origin AS, {} IPv6 origin AS",
                        len(self.all_prefixesv4), len(self.all_prefixesv6),
                        len(self.origin_prefixesv4), len(self.origin_prefixesv6)))
