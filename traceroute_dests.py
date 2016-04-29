@@ -8,6 +8,7 @@ measurements.
 Method:
 
 - load data from all RIS collectors
+- remove default routes and any prefix smaller than /126 or /30 (inclusive)
 - for each origin AS x:
   - consider all prefixes originated by x
   - remove any prefix that has a least one more-specific prefix
@@ -91,6 +92,16 @@ class RIS(object):
                     prefix = elem.fields['prefix']
                     if len(elem.fields['as-path']) == 0:
                         logging.warning(M("Prefix {} with empty AS-path", prefix))
+                        elem = record.get_next_elem()
+                        continue
+                    prefix_net = ip_network(prefix.decode())
+                    # Remove any prefix smaller than /126 or /30
+                    if prefix_net.num_addresses <= 4:
+                        logging.warning(M("Ignored too specific route {}", prefix))
+                        elem = record.get_next_elem()
+                        continue
+                    if prefix_net.prefixlen == 0:
+                        logging.warning(M("Ignored default route {}", prefix))
                         elem = record.get_next_elem()
                         continue
                     # Get the origin AS
