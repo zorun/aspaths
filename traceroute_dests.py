@@ -127,7 +127,7 @@ class RIS(object):
     def generate_dest(self, max_prefixes_per_as, ip_version=6):
         """Generate a list of IP addresses to be used as destination for
         traceroute measurements."""
-        self.dest = list()
+        self.dest = set()
         if ip_version == 4:
             all_prefixes = self.all_prefixesv4
             origin_prefixes = self.origin_prefixesv4
@@ -158,7 +158,7 @@ class RIS(object):
                         dest_ip = str(next(prefix_net.hosts()))
                     else:
                         dest_ip = str(next(subprefixes[0].iter_hosts()))
-                self.dest.append(dest_ip)
+                self.dest.add(dest_ip)
 
     def print_dest(self, file=sys.stdout):
         for dest in self.dest:
