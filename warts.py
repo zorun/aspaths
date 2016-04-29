@@ -111,6 +111,7 @@ class WartsReader:
      ('srcaddr', self.read_address),
      ('dstaddr', self.read_address),
      ('usrid', self.read_uint32_t),
+     ('ipoffset', self.read_uint16_t),
     ]
 
     self.hop_flags = [
@@ -132,6 +133,7 @@ class WartsReader:
      ('qtos', self.read_uint8_t),
      ('icmpext', self.read_icmpext),
      ('addr', self.read_address),
+     ('txtime', self.read_timeval),
     ]
 
   def next(self):
