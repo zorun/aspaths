@@ -1,5 +1,7 @@
 from __future__ import print_function, unicode_literals
 
+import gzip, bz2
+
 
 def uniq(l):
     """Given a sequence of objects, suppress consecutive duplicate elements
@@ -64,3 +66,27 @@ def flatten_unknown(l):
     while pos < len(l):
         yield l[pos]
         pos += 1
+
+def open_compressed(infile):
+    """Open a file, transparently decompressing it if needed
+
+    Borrowed from https://github.com/cmand/scamper
+    """
+    fd = None
+    # try reading as a bz2 file
+    try:
+        fd = bz2.BZ2File(infile, 'rb')
+        fd.read(1)
+        fd = bz2.BZ2File(infile, 'rb')
+        return fd
+    except IOError, e:
+        pass
+    # try reading as a gzip file
+    try:
+        fd = gzip.open(infile, 'rb')
+        fd.read(1)
+        fd = gzip.open(infile, 'rb')
+        return fd
+    except IOError, e:
+        pass
+    return open(infile, 'rb')

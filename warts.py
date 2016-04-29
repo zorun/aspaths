@@ -1,13 +1,13 @@
-#!/usr/bin/env python
-# 
-# Program:      $Id: sc_warts.py 1551 2015-02-11 14:14:09Z rbeverly $
 # Author:       Robert Beverly <rbeverly@nps.edu>
 # Description:  Parse a binary warts capture according to warts.5
-#
+# Source:       https://github.com/cmand/scamper
+
 import struct
 import socket
-import gzip, bz2
 import sys
+
+from utils import open_compressed
+
 
 class WartsReader:
   def __init__(self, wartsfile, verbose=False):
@@ -16,7 +16,7 @@ class WartsReader:
     # Auto-detect if warts file is using deprecated, type=5 addresses
     self.deprecated_addresses = False
     self.wartsfile = wartsfile
-    self.fd = warts_open(self.wartsfile)
+    self.fd = open_compressed(self.wartsfile)
 
     # For each object, define a list of optional variables that may be
     # in the record (dependent on flags indicator) and the callback 
@@ -368,32 +368,3 @@ class WartsReader:
       if ord(b) == 0x00: break
       s += b
     return s
-
-
-def warts_open(infile):
-  fd = None
-  # try reading as a bz2 file
-  try:
-    fd = bz2.BZ2File(infile, 'rb')
-    fd.read(1)
-    fd = bz2.BZ2File(infile, 'rb')
-    return fd
-  except IOError, e:
-    pass
-  # try reading as a gzip file
-  try:
-    fd = gzip.open(infile, 'rb')
-    fd.read(1)
-    fd = gzip.open(infile, 'rb')
-    return fd
-  except IOError, e:
-    pass
-  return open(infile, 'rb')
-
-
-if __name__ == "__main__":
-  assert len(sys.argv) == 2
-  f = warts_open(sys.argv[1])
-  while True:
-    (flags, hops) = warts_next(f)
-    if flags == False: break
