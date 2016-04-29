@@ -9,12 +9,12 @@ import logging
 import socket
 from enum import Enum
 
-from _pybgpstream import BGPStream, BGPRecord, BGPElem
 from pytricia import PyTricia
 
 from iplane import IPlaneTraceFile, Hop
 import peeringdb
 import utils
+from bgp import load_rib_mrtdump
 
 
 class M(object):
@@ -132,45 +132,33 @@ class ASPathsAnalyser(object):
             self.ris_remove_default_route()
             return
         # No cache, use BGPstream to parse the RIS dump.
-        record = BGPRecord()
-        stream = BGPStream()
-        stream.set_data_interface("singlefile")
-        stream.set_data_interface_option("singlefile", "rib-file", filename)
-        # Add additional filters here
-        stream.start()
-        while(stream.get_next_record(record)):
-            if record.status == "valid":
-                elem = record.get_next_elem()
-                while(elem):
-                    prefix = elem.fields['prefix']
-                    # Discard IPv6 prefixes (crude but fast)
-                    if ':' in prefix:
-                        elem = record.get_next_elem()
-                        continue
-                    if len(elem.fields['as-path']) == 0:
-                        logging.warning(M("Prefix {} with empty AS-path", prefix))
-                        elem = record.get_next_elem()
-                        continue
-                    # First get the origin AS
-                    origin = elem.fields['as-path'].split(b' ')[-1]
-                    # In rare cases, we have an as-set (BGP aggregation).
-                    if '{' in origin:
-                        origin = {int(asn) for asn in origin.strip(b'{}').split(b',')}
-                    else:
-                        origin = {int(origin)}
-                    if self.bgp_origin.has_key(prefix):
-                        self.bgp_origin[prefix].update(origin)
-                    else:
-                        self.bgp_origin[prefix] = origin
-                    # If received from self.source_asn, record the whole AS-path
-                    if elem.peer_asn == self.source_asn:
-                        # In rare cases, we have an as-set (BGP aggregation).
-                        # We simply take the first ASN for now.
-                        # TODO: possible MOAS
-                        as_path = [int(asn.strip(b'{}').split(b',')[0])
-                                   for asn in elem.fields['as-path'].split(b' ')]
-                        self.bgp_aspath[prefix] = as_path
-                    elem = record.get_next_elem()
+        for elem in load_rib_mrtdump(filename):
+            prefix = elem.fields['prefix']
+            # Discard IPv6 prefixes (crude but fast)
+            if ':' in prefix:
+                continue
+            if len(elem.fields['as-path']) == 0:
+                logging.warning(M("Prefix {} with empty AS-path", prefix))
+                continue
+            # First get the origin AS
+            origin = elem.fields['as-path'].split(b' ')[-1]
+            # In rare cases, we have an as-set (BGP aggregation).
+            if '{' in origin:
+                origin = {int(asn) for asn in origin.strip(b'{}').split(b',')}
+            else:
+                origin = {int(origin)}
+            if self.bgp_origin.has_key(prefix):
+                self.bgp_origin[prefix].update(origin)
+            else:
+                self.bgp_origin[prefix] = origin
+            # If received from self.source_asn, record the whole AS-path
+            if elem.peer_asn == self.source_asn:
+                # In rare cases, we have an as-set (BGP aggregation).
+                # We simply take the first ASN for now.
+                # TODO: possible MOAS
+                as_path = [int(asn.strip(b'{}').split(b',')[0])
+                           for asn in elem.fields['as-path'].split(b' ')]
+                self.bgp_aspath[prefix] = as_path
         self.ris_remove_default_route()
         logging.info(M("[RIS] Loaded {} BGP prefixes in total", len(self.bgp_origin)))
         logging.info(M("[RIS] Loaded {} BGP prefixes from AS {}",

@@ -28,10 +28,11 @@ import sys
 from collections import defaultdict
 import random
 
-from _pybgpstream import BGPStream, BGPRecord, BGPElem
 from pytricia import PyTricia
 from netaddr import IPSet
 from ipaddress import ip_network
+
+from bgp import load_rib_mrtdump
 
 
 class M(object):
@@ -79,48 +80,36 @@ class RIS(object):
         self.origin_prefixesv6 = defaultdict(PyTriciav6)
 
     def load_mrtdump(self, filename):
-        record = BGPRecord()
-        stream = BGPStream()
-        stream.set_data_interface("singlefile")
-        stream.set_data_interface_option("singlefile", "rib-file", filename)
-        stream.start()
         logging.info(M("Started parsing file {}", filename))
         nb_too_specifics = 0
-        while(stream.get_next_record(record)):
-            if record.status == "valid":
-                elem = record.get_next_elem()
-                while(elem):
-                    prefix = elem.fields['prefix']
-                    if len(elem.fields['as-path']) == 0:
-                        logging.warning(M("Prefix {} with empty AS-path", prefix))
-                        elem = record.get_next_elem()
-                        continue
-                    prefix_net = ip_network(prefix.decode())
-                    # Remove any prefix smaller than /126 or /30
-                    if prefix_net.num_addresses <= 4:
-                        logging.debug(M("Ignored too specific route {}", prefix))
-                        nb_too_specifics += 1
-                        elem = record.get_next_elem()
-                        continue
-                    if prefix_net.prefixlen == 0:
-                        logging.warning(M("Ignored default route {}", prefix))
-                        elem = record.get_next_elem()
-                        continue
-                    # Get the origin AS
-                    origin = elem.fields['as-path'].split(b' ')[-1]
-                    # In rare cases, we have an as-set (BGP aggregation).
-                    # We just take any AS.
-                    if '{' in origin:
-                        origin = int(origin.strip(b'{}').split(b',')[0])
-                    else:
-                        origin = int(origin)
-                    if ':' in prefix:
-                        self.all_prefixesv6[prefix] = None
-                        self.origin_prefixesv6[origin][prefix] = None
-                    else:
-                        self.all_prefixesv4[prefix] = None
-                        self.origin_prefixesv4[origin][prefix] = None
-                    elem = record.get_next_elem()
+        for elem in load_rib_mrtdump(filename):
+            prefix = elem.fields['prefix']
+            if len(elem.fields['as-path']) == 0:
+                logging.warning(M("Prefix {} with empty AS-path", prefix))
+                continue
+            prefix_net = ip_network(prefix.decode())
+            # Remove any prefix smaller than /126 or /30
+            if prefix_net.num_addresses <= 4:
+                logging.debug(M("Ignored too specific route {}", prefix))
+                nb_too_specifics += 1
+                continue
+            if prefix_net.prefixlen == 0:
+                logging.warning(M("Ignored default route {}", prefix))
+                continue
+            # Get the origin AS
+            origin = elem.fields['as-path'].split(b' ')[-1]
+            # In rare cases, we have an as-set (BGP aggregation).
+            # We just take any AS.
+            if '{' in origin:
+                origin = int(origin.strip(b'{}').split(b',')[0])
+            else:
+                origin = int(origin)
+            if ':' in prefix:
+                self.all_prefixesv6[prefix] = None
+                self.origin_prefixesv6[origin][prefix] = None
+            else:
+                self.all_prefixesv4[prefix] = None
+                self.origin_prefixesv4[origin][prefix] = None
         logging.info(M("Done parsing file {}", filename))
         if nb_too_specifics > 0:
             logging.warning(M("Ignored {} routes that were too specific", nb_too_specifics))
