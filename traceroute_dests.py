@@ -147,4 +147,15 @@ if __name__ == '__main__':
     for filename in sys.argv[1:]:
         r.load_mrtdump(filename)
     r.generate_dest(MAX_PREFIXES_PER_AS, ip_version=4)
-    r.print_dest()
+    with open('destinations-ipv4', 'w') as f:
+        logging.info(M("Printing {} IPv4 destinations to file {}...",
+                       len(r.dest),
+                       'destinations-ipv4'))
+        r.print_dest(f)
+    r.generate_dest(MAX_PREFIXES_PER_AS, ip_version=6)
+    with open('destinations-ipv6', 'w') as f:
+        logging.info(M("Printing {} IPv6 destinations to file {}...",
+                       len(r.dest),
+                       'destinations-ipv6'))
+        r.print_dest(f)
+    logging.info("Done! Don't forget to randomize the list of destination.")
