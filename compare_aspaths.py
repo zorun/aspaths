@@ -65,17 +65,10 @@ class ASPathsAnalyser(object):
         """Use the input filename and source ASN to determine a cache filename"""
         ris_filename = os.path.basename(ris_filename)
         return os.path.join(self.CACHE_BASEDIR,
-                            ris_filename + "_" + str(self.source_asn) + ".pickle")
+                            ris_filename + "_" + str(self.source_asn) + "_v2.pickle")
 
     def save_ris_cache(self, ris_filename):
-        """Dump bgp_origin and bgp_aspath to a file for later reuse.
-
-        Experiments on a full RIB from RIS collector rrc12 show a
-        14-times improvement in loading time (16 seconds vs. 232
-        seconds), but also an increase in RAM usage while
-        pickling/unpickling (1042 MB peak usage when saving, 777 MB
-        peak usage when loading, 554 MB peak usage without cache).
-        """
+        """Dump bgp_origin to a pickle file for later reuse."""
         try:
             os.mkdir(self.CACHE_BASEDIR)
         except OSError:
@@ -84,20 +77,19 @@ class ASPathsAnalyser(object):
         # PyTricia objects cannot be pickled, we need to transform
         # them first.
         serialise = lambda tree: tuple((prefix, tree[prefix]) for prefix in tree)
-        obj = (serialise(self.bgp_origin), serialise(self.bgp_aspath))
+        obj = serialise(self.bgp_origin)
         with open(cachename, "w") as f:
             pickle.dump(obj, f)
 
     def load_ris_cache(self, ris_filename):
-        """Try to load bgp_origin and bgp_aspath from cache, returns True if
-        successful"""
+        """Try to load bgp_origin from cache, returns True if successful"""
         cachename = self.ris_cache_filename(ris_filename)
         if not os.path.isfile(cachename):
             return False
         with open(cachename, "r") as f:
             # TODO: handle more pickle exceptions
             try:
-                (bgp_origin, bgp_aspath) = pickle.load(f)
+                bgp_origin = pickle.load(f)
             except EOFError:
                 return False
         def deserialise(obj):
@@ -106,32 +98,29 @@ class ASPathsAnalyser(object):
                 p[prefix] = value
             return p
         self.bgp_origin = deserialise(bgp_origin)
-        self.bgp_aspath = deserialise(bgp_aspath)
         return True
 
     def ris_remove_default_route(self):
         if self.bgp_origin.has_key(b'0.0.0.0/0'):
             self.bgp_origin.delete(b'0.0.0.0/0')
             logging.info("[RIS] Removed default route in bgp_origin")
-        if self.bgp_aspath.has_key(b'0.0.0.0/0'):
-            self.bgp_aspath.delete(b'0.0.0.0/0')
-            logging.info("[RIS] Removed default route in bgp_aspath")
 
-    def load_ris(self, filename):
-        """Loads a full RIS BGP table and store it in prefix trees for later use.
-        A pickled cache is kept to avoid recomputing prefix trees."""
-        # This maps each IP prefix to a set of origin AS (singleton except for MOAS)
+    def load_bgp_mapping(self, filename):
+        """Loads a full BGP table and store (prefix, origin AS) couples in a
+        prefix tree.  This allows fast queries for finding origin ASes for a given IP.
+
+        A pickled cache is kept to avoid recomputing the prefix tree
+        each time the program is run.
+        """
+        # This maps each IP prefix to a set of origin AS (most often a singleton)
         self.bgp_origin = PyTricia()
-        # This maps each IP prefix to its AS path as seen by self.source_asn
-        self.bgp_aspath = PyTricia()
-        # Try to load from cache
+        logging.info("[RIS] Trying to load BGP prefixes from cache...")
         if self.load_ris_cache(filename):
             logging.info(M("[RIS] Loaded {} BGP prefixes from cache", len(self.bgp_origin)))
-            logging.info(M("[RIS] Loaded {} BGP prefixes from AS {} from cache",
-                           len(self.bgp_aspath), self.source_asn))
             self.ris_remove_default_route()
             return
-        # No cache, use BGPstream to parse the RIS dump.
+        logging.info("[RIS] No cache, loading from mrtdump file...")
+        # Use BGPstream to parse the RIS dump.
         for elem in load_rib_mrtdump(filename):
             prefix = elem.fields['prefix']
             # Discard IPv6 prefixes (crude but fast)
@@ -151,18 +140,8 @@ class ASPathsAnalyser(object):
                 self.bgp_origin[prefix].update(origin)
             else:
                 self.bgp_origin[prefix] = origin
-            # If received from self.source_asn, record the whole AS-path
-            if elem.peer_asn == self.source_asn:
-                # In rare cases, we have an as-set (BGP aggregation).
-                # We simply take the first ASN for now.
-                # TODO: possible MOAS
-                as_path = [int(asn.strip(b'{}').split(b',')[0])
-                           for asn in elem.fields['as-path'].split(b' ')]
-                self.bgp_aspath[prefix] = as_path
         self.ris_remove_default_route()
-        logging.info(M("[RIS] Loaded {} BGP prefixes in total", len(self.bgp_origin)))
-        logging.info(M("[RIS] Loaded {} BGP prefixes from AS {}",
-                       len(self.bgp_aspath), self.source_asn))
+        logging.info(M("[RIS] Loaded {} BGP prefixes", len(self.bgp_origin)))
         logging.info("[RIS] Saving data to pickle cache")
         self.save_ris_cache(filename)
 
@@ -176,10 +155,41 @@ class ASPathsAnalyser(object):
         except KeyError:
             return set()
 
-    def ris_aspath_from_source(self, ip):
-        """Returns the AS-path for the most specific prefix seen by
-        self.source_asn, with AS-path prepending removed.  If no
-        prefix is found, an empty list is returned.
+    def load_bgp_ground_truth(self, filename, prepend_source_asn=False):
+        """Loads the BGP table from the source ASN, and store it in a
+        prefix tree.
+        """
+        # This maps each IP prefix to its AS path
+        self.bgp_aspath = PyTricia()
+        logging.info("[BGP] Loading BGP data from source AS...")
+        for elem in load_rib_mrtdump(filename):
+            prefix = elem.fields['prefix']
+            # Discard IPv6 prefixes (crude but fast)
+            if ':' in prefix:
+                continue
+            if len(elem.fields['as-path']) == 0:
+                logging.warning(M("Prefix {} with empty AS-path", prefix))
+                continue
+            # In rare cases, we have an as-set (BGP aggregation).
+            # We simply take the first ASN for now.
+            # TODO: possible MOAS
+            as_path = [int(asn.strip(b'{}').split(b',')[0])
+                       for asn in elem.fields['as-path'].split(b' ')]
+            if prepend_source_asn:
+                as_path.insert(0, self.source_asn)
+            if as_path[0] != self.source_asn:
+                #msg = "AS path for prefix {} does not start with source AS ({}): {}"
+                #logging.error(M(msg, prefix, self.source_asn, as_path))
+                continue
+            self.bgp_aspath[prefix] = as_path
+        logging.info(M("[BGP] Loaded {} BGP ground-truth prefixes from source AS",
+                       len(self.bgp_aspath)))
+
+    def get_aspath(self, ip):
+        """Using the BGP ground truth, returns the AS-path for the most
+        specific prefix seen by self.source_asn, with AS-path
+        prepending removed.  If no prefix is found, an empty list is
+        returned.
         """
         try:
             raw_path = self.bgp_aspath[ip]
@@ -331,7 +341,7 @@ class ASPathsAnalyser(object):
             final_hop = Hop(traceroute.dest, 0., 0)
             traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
-        bgp_aspath = self.ris_aspath_from_source(traceroute.dest.encode())
+        bgp_aspath = self.get_aspath(traceroute.dest.encode())
         matches = self.classify_match(aspath, bgp_aspath)
         logging.debug(M("Matches for {}: {}", traceroute.dest, ' '.join([m.name for m in matches])))
         self.matches.update(matches)
@@ -360,10 +370,14 @@ def create_parser():
     parser.add_argument('--verbose', '-v', action='count', default=0)
     parser.add_argument('--source-asn', '-s', type=int,
                         help="ASN from which the experiment was run")
-    parser.add_argument('--bgp', '-b',
-                        help="file containing BGP data, used for both IP-to-AS mapping "
-                        "and as a ground truth when comparing with traceroute paths "
-                        "(mrtdump format)")
+    parser.add_argument('--bgp-mapping', '-r',
+                        help="file containing a mrtdump BGP RIB, used for IP-to-AS mapping")
+    parser.add_argument('--bgp-ground-truth', '-b',
+                        help="file containing a mrtdump BGP RIB, used as a ground truth for comparing with traceroute paths")
+    # TODO: detect automatically whether this is needed or not
+    parser.add_argument('--prepend-source-asn', '-p', action='store_true',
+                        help="prepend the source ASN to all AS paths found in the ground truth RIB "
+                        "(useful if the BGP data was obtained through an iBGP session)")
     parser.add_argument('--traceroute', '-t',
                         help="file containing traceroutes to analyse (iPlane only for now)")
     return parser
@@ -379,5 +393,6 @@ if __name__ == '__main__':
                         level=levels[args.verbose])
     a = ASPathsAnalyser(args.source_asn)
     a.load_peeringdb()
-    a.load_ris(args.bgp)
+    a.load_bgp_mapping(args.bgp_mapping)
+    a.load_bgp_ground_truth(args.bgp_ground_truth, args.prepend_source_asn)
     a.analyse_traceroutes(args.traceroute)
