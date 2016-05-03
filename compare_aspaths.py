@@ -1,6 +1,5 @@
 from __future__ import print_function, unicode_literals, division
 
-import sys
 import os
 from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Network
 from collections import namedtuple, Counter
@@ -8,6 +7,7 @@ import cPickle as pickle
 import logging
 import socket
 from enum import Enum
+import argparse
 
 from pytricia import PyTricia
 
@@ -355,12 +355,29 @@ class ASPathsAnalyser(object):
         print("{:24} {:6} {:6.2%}".format("Total", self.nb_traceroutes, 1))
 
 
+def create_parser():
+    parser = argparse.ArgumentParser(description='Compare AS paths and traceroute paths.')
+    parser.add_argument('--verbose', '-v', action='count', default=0)
+    parser.add_argument('--source-asn', '-s', type=int,
+                        help="ASN from which the experiment was run")
+    parser.add_argument('--bgp', '-b',
+                        help="file containing BGP data, used for both IP-to-AS mapping "
+                        "and as a ground truth when comparing with traceroute paths "
+                        "(mrtdump format)")
+    parser.add_argument('--traceroute', '-t',
+                        help="file containing traceroutes to analyse (iPlane only for now)")
+    return parser
+
+
 if __name__ == '__main__':
-    # TODO: change the logging level using a command-line argument
+    parser = create_parser()
+    args = parser.parse_args()
+    levels = [logging.WARNING, logging.INFO, logging.DEBUG]
+    if args.verbose >= len(levels):
+        args.verbose = len(levels) - 1
     logging.basicConfig(format='%(message)s',
-                        level=logging.DEBUG)
-    source_asn = int(sys.argv[1])
-    a = ASPathsAnalyser(source_asn)
+                        level=levels[args.verbose])
+    a = ASPathsAnalyser(args.source_asn)
     a.load_peeringdb()
-    a.load_ris(sys.argv[2])
-    a.analyse_traceroutes(sys.argv[3])
+    a.load_ris(args.bgp)
+    a.analyse_traceroutes(args.traceroute)
