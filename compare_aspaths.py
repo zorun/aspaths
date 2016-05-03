@@ -11,7 +11,7 @@ import argparse
 
 from pytricia import PyTricia
 
-from warts import WartsReader
+import warts
 import peeringdb
 import utils
 from bgp import load_rib_mrtdump
@@ -338,6 +338,11 @@ class ASPathsAnalyser(object):
             res.add(BGPTracerouteMatch.traceroute_loop)
         return res
 
+    def warts_stop_reason(self, traceroute):
+        """Return a tag describing the reason why scamper stopped the traceroute"""
+        reason = warts.TRACEROUTE_STOP[traceroute.flags['stopreas']]
+        return "warts_" + reason.lower()
+
     def analyse_traceroute(self, traceroute):
         if len(traceroute.hops) == 0:
             return
@@ -365,7 +370,9 @@ class ASPathsAnalyser(object):
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.get_aspath(traceroute.flags['dstaddr'].encode())
         matches = self.classify_match(aspath, bgp_aspath)
-        logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join([m.name for m in matches])))
+        stop_reason = self.warts_stop_reason(traceroute)
+        all_tags = [m.name for m in matches] + [stop_reason]
+        logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join(all_tags)))
         self.matches.update(matches)
         self.nb_traceroutes += 1
         if not BGPTracerouteMatch.exact_match_only_known in matches:
@@ -375,8 +382,8 @@ class ASPathsAnalyser(object):
                 logging.debug('--')
 
     def analyse_traceroutes(self, filename):
-        warts = WartsReader(filename)
-        for (flags, hops) in warts.read_all():
+        w = warts.WartsReader(filename)
+        for (flags, hops) in w.read_all():
             traceroute = WartsTraceroute(flags, hops)
             self.analyse_traceroute(traceroute)
         print("Breakdown of match classes (not mutually exclusive!):")
