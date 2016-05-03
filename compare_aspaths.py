@@ -333,7 +333,7 @@ class ASPathsAnalyser(object):
                 res.add(BGPTracerouteMatch.distinct_but_same_second)
         if len(bgp_path) == 0:
             res.add(BGPTracerouteMatch.no_bgp)
-        occurrences = Counter([frozenset(asnset) for asnset in trace_path])
+        occurrences = Counter([frozenset(asnset) for asnset in trace_path if len(asnset) > 0])
         if occurrences.most_common(1)[0][1] > 1:
             res.add(BGPTracerouteMatch.traceroute_loop)
         return res
