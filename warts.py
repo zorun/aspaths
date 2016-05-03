@@ -348,12 +348,18 @@ class WartsReader(object):
       if len(addr) == 4: typ = 1
       if len(addr) == 16: typ = 2
     if typ == 1:
-      return socket.inet_ntop(socket.AF_INET, addr)
+      address = socket.inet_ntop(socket.AF_INET, addr)
     elif typ == 2:
-      return socket.inet_ntop(socket.AF_INET6, addr)
+      address = socket.inet_ntop(socket.AF_INET6, addr)
     else:
       print("Addr type:", typ, "not implemented")
       assert False
+    # Convert address to unicode if needed (inet_ntop returns bytes
+    # with python2 and an unicode string with python3...)
+    if hasattr(address, 'decode'):
+      return address.decode('utf-8')
+    else:
+      return address
 
   def read_referenced_address(self):
     """ Resolve a warts deprecated (type 5) style referenced address """
