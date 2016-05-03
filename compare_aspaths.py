@@ -11,10 +11,13 @@ import argparse
 
 from pytricia import PyTricia
 
-from iplane import IPlaneTraceFile, Hop
+from warts import WartsReader
 import peeringdb
 import utils
 from bgp import load_rib_mrtdump
+
+
+WartsTraceroute = namedtuple('WartsTraceroute', ['flags', 'hops'])
 
 
 class M(object):
@@ -240,7 +243,7 @@ class ASPathsAnalyser(object):
     def traceroute_aspath(self, traceroute):
         """Given a traceroute, compute an AS-path."""
         aspath = []
-        hops = [hop.ip for hop in traceroute.hops]
+        hops = [hop['addr'] for hop in traceroute.hops]
         for ip_str in hops:
             ip = ip_address(ip_str)
             asn = self.ip_to_asn(ip)
@@ -262,7 +265,7 @@ class ASPathsAnalyser(object):
         each hop."""
         data = list()
         max_len = [1, 1, 1]
-        hops = [hop.ip for hop in traceroute.hops]
+        hops = [hop['addr'] for hop in traceroute.hops]
         for ip in hops:
             if ip == "0.0.0.0":
                 data.append(('X', 'X', 'X'))
@@ -336,14 +339,31 @@ class ASPathsAnalyser(object):
         return res
 
     def analyse_traceroute(self, traceroute):
+        # Preprocess traceroute to make missing hops apparent
+        # Python2 hacks for copy() and clear()...
+        hops = traceroute.hops[:]
+        del traceroute.hops[:]
+        empty_hop = {u'addr': u'0.0.0.0'}
+        hop_id = 1
+        for hop in hops:
+            while hop['probettl'] > hop_id:
+                traceroute.hops.append(empty_hop)
+                hop_id += 1
+            traceroute.hops.append(hop)
+            hop_id += 1
         # Add the destination as final hop if it's not already the case
-        if ip_address(traceroute.hops[-1].ip) != ip_address(traceroute.dest):
-            final_hop = Hop(traceroute.dest, 0., 0)
+        last_hop = traceroute.hops[-1]['addr']
+        destination = traceroute.flags['dstaddr']
+        if ip_address(last_hop) != ip_address(destination):
+            final_hop = {u'addr': destination}
+            # Make sure there is an unknown hop, because we might be
+            # missing a rather large portion of the traceroute
+            traceroute.hops.append(empty_hop)
             traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
-        bgp_aspath = self.get_aspath(traceroute.dest.encode())
+        bgp_aspath = self.get_aspath(traceroute.flags['dstaddr'].encode())
         matches = self.classify_match(aspath, bgp_aspath)
-        logging.debug(M("Matches for {}: {}", traceroute.dest, ' '.join([m.name for m in matches])))
+        logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join([m.name for m in matches])))
         self.matches.update(matches)
         self.nb_traceroutes += 1
         if not BGPTracerouteMatch.exact_match_only_known in matches:
@@ -353,9 +373,10 @@ class ASPathsAnalyser(object):
                 logging.debug('--')
 
     def analyse_traceroutes(self, filename):
-        with IPlaneTraceFile(filename) as f:
-            for traceroute in f:
-                self.analyse_traceroute(traceroute)
+        warts = WartsReader(filename)
+        for (flags, hops) in warts.read_all():
+            traceroute = WartsTraceroute(flags, hops)
+            self.analyse_traceroute(traceroute)
         print("Breakdown of match classes (not mutually exclusive!):")
         for (match_class, count) in self.matches.items():
             print("{:24} {:6}  {:6.2%}  {}".format(match_class.name,
@@ -379,7 +400,7 @@ def create_parser():
                         help="prepend the source ASN to all AS paths found in the ground truth RIB "
                         "(useful if the BGP data was obtained through an iBGP session)")
     parser.add_argument('--traceroute', '-t',
-                        help="file containing traceroutes to analyse (iPlane only for now)")
+                        help="file containing traceroutes to analyse (warts only)")
     return parser
 
 
