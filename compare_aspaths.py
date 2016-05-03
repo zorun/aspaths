@@ -339,6 +339,8 @@ class ASPathsAnalyser(object):
         return res
 
     def analyse_traceroute(self, traceroute):
+        if len(traceroute.hops) == 0:
+            return
         # Preprocess traceroute to make missing hops apparent
         # Python2 hacks for copy() and clear()...
         hops = traceroute.hops[:]
