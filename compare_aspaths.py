@@ -65,10 +65,9 @@ class ASPathsAnalyser(object):
         self.nb_traceroutes = 0
 
     def ris_cache_filename(self, ris_filename):
-        """Use the input filename and source ASN to determine a cache filename"""
+        """Use the input filename to determine a cache filename"""
         ris_filename = os.path.basename(ris_filename)
-        return os.path.join(self.CACHE_BASEDIR,
-                            ris_filename + "_" + str(self.source_asn) + "_v2.pickle")
+        return os.path.join(self.CACHE_BASEDIR, ris_filename + "_v2.pickle")
 
     def save_ris_cache(self, ris_filename):
         """Dump bgp_origin to a pickle file for later reuse."""
