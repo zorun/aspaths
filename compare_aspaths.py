@@ -64,6 +64,26 @@ class BGPTracerouteMatch(Enum):
     warts_halted = "Traceroute was halted"
 
 
+class TagsBitMask(object):
+    """
+    Represent a set of tags (BGPTracerouteMatch) as a bitmask.
+    """
+
+    def __init__(self, tags_set):
+        self.value = 0
+        for tag in list(BGPTracerouteMatch):
+            self.value <<= 1
+            if tag in tags_set:
+                self.value |= 1
+
+    def __eq__(self, other):
+        return self.value == other.value
+
+    def __str__(self):
+        return '{:0>{}}'.format(bin(self.value).lstrip('0b'),
+                                len(BGPTracerouteMatch))
+
+
 class ASPathsAnalyser(object):
     IPV4_NULLADDRESS = IPv4Address("0.0.0.0")
     CACHE_BASEDIR = "cache"
@@ -73,6 +93,8 @@ class ASPathsAnalyser(object):
         # Count the number of matches from each class (beware, they are
         # not mutually exclusive).
         self.tags_counter = Counter()
+        # Another way to look at tags (counting identical bitmasks)
+        self.bitmask_counter = Counter()
         # Number of traceroutes processed
         self.nb_traceroutes = 0
 
@@ -383,9 +405,12 @@ class ASPathsAnalyser(object):
         bgp_aspath = self.get_aspath(traceroute.flags['dstaddr'].encode())
         matches = self.classify_match(aspath, bgp_aspath)
         matches.add(self.warts_stop_reason(traceroute))
+        bitmask = TagsBitMask(matches)
         all_tags = [m.name for m in matches]
-        logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join(all_tags)))
+        logging.debug(M("Matches for {}: {} {}", traceroute.flags['dstaddr'],
+                        bitmask, ' '.join(all_tags)))
         self.tags_counter.update(matches)
+        self.bitmask_counter[bitmask] += 1
         self.nb_traceroutes += 1
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
