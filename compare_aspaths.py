@@ -70,9 +70,9 @@ class ASPathsAnalyser(object):
 
     def __init__(self, source_asn):
         self.source_asn = source_asn
-        # Count the number of matches for each class (beware, they are
+        # Count the number of matches from each class (beware, they are
         # not mutually exclusive).
-        self.matches = Counter()
+        self.tags_counter = Counter()
         # Number of traceroutes processed
         self.nb_traceroutes = 0
 
@@ -385,7 +385,7 @@ class ASPathsAnalyser(object):
         matches.add(self.warts_stop_reason(traceroute))
         all_tags = [m.name for m in matches]
         logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join(all_tags)))
-        self.matches.update(matches)
+        self.tags_counter.update(matches)
         self.nb_traceroutes += 1
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
@@ -399,11 +399,14 @@ class ASPathsAnalyser(object):
             traceroute = WartsTraceroute(flags, hops)
             self.analyse_traceroute(traceroute)
         print("Breakdown of match classes (not mutually exclusive!):")
-        for (match_class, count) in sorted(self.matches.items(), key=lambda (x, y): x.name):
-            print("{:24} {:6}  {:6.2%}  {}".format(match_class.name,
-                                           count,
-                                           count / self.nb_traceroutes,
-                                           match_class.value))
+        for tag in BGPTracerouteMatch:
+            count = self.tags_counter[tag]
+            if count == 0:
+                continue
+            print("{:24} {:6}  {:6.2%}  {}".format(tag.name,
+                                                   count,
+                                                   count / self.nb_traceroutes,
+                                                   tag.value))
         print("{:24} {:6} {:6.2%}".format("Total", self.nb_traceroutes, 1))
 
 
