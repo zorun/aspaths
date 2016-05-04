@@ -397,7 +397,7 @@ class ASPathsAnalyser(object):
             traceroute = WartsTraceroute(flags, hops)
             self.analyse_traceroute(traceroute)
         print("Breakdown of match classes (not mutually exclusive!):")
-        for (match_class, count) in self.matches.items():
+        for (match_class, count) in sorted(self.matches.items(), key=lambda (x, y): x.name):
             print("{:24} {:6}  {:6.2%}  {}".format(match_class.name,
                                            count,
                                            count / self.nb_traceroutes,
