@@ -50,6 +50,16 @@ class BGPTracerouteMatch(Enum):
     distinct_but_same_second = "Both AS-paths exhibit distinct ASN, but the second known ASN is the same"
     no_bgp = "Empty BGP AS-path"
     traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
+    warts_none = "No stopping reason"
+    warts_completed = "Got an ICMP port unreachable"
+    warts_unreach = "Got an other ICMP unreachable code"
+    warts_icmp = "Got an ICMP message other than unreachable"
+    warts_loop = "Loop detected"
+    warts_gaplimit = "Gap limit reached"
+    warts_error = "Error in sendto"
+    warts_hoplimit = "Hop limit reached"
+    warts_gss = "Found hop in global stop set (doubletree)"
+    warts_halted = "Traceroute was halted"
 
 
 class ASPathsAnalyser(object):
@@ -340,7 +350,8 @@ class ASPathsAnalyser(object):
     def warts_stop_reason(self, traceroute):
         """Return a tag describing the reason why scamper stopped the traceroute"""
         reason = warts.TRACEROUTE_STOP[traceroute.flags['stopreas']]
-        return "warts_" + reason.lower()
+        tag_name = "warts_" + reason.lower()
+        return BGPTracerouteMatch[tag_name]
 
     def analyse_traceroute(self, traceroute):
         if len(traceroute.hops) == 0:
@@ -369,8 +380,8 @@ class ASPathsAnalyser(object):
         aspath = self.traceroute_aspath(traceroute)
         bgp_aspath = self.get_aspath(traceroute.flags['dstaddr'].encode())
         matches = self.classify_match(aspath, bgp_aspath)
-        stop_reason = self.warts_stop_reason(traceroute)
-        all_tags = [m.name for m in matches] + [stop_reason]
+        matches.add(self.warts_stop_reason(traceroute))
+        all_tags = [m.name for m in matches]
         logging.debug(M("Matches for {}: {}", traceroute.flags['dstaddr'], ' '.join(all_tags)))
         self.matches.update(matches)
         self.nb_traceroutes += 1
