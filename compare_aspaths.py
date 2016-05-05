@@ -58,6 +58,7 @@ class BGPTracerouteMatch(Enum):
     distinct_but_same_second = "Both AS-paths exhibit distinct ASN, but the second known ASN is the same"
     no_bgp = "Empty BGP AS-path"
     traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
+    cogent_ntt = "Traceroute path has [Cogent, NTT], but BGP path has [Cogent, not NTT]"
     warts_none = "No stopping reason"
     warts_completed = "Got an ICMP port unreachable"
     warts_unreach = "Got an other ICMP unreachable code"
@@ -102,11 +103,12 @@ class TagsBitMask(object):
         mask = '{:0>{}}'.format(bin(self.value).lstrip('0b'),
                                 len(BGPTracerouteMatch))
         # Separate components for readability
-        return '{} {} {} {} {}'.format(mask[:2],
-                                       mask[2:4],
-                                       mask[4:6],
-                                       mask[6:8],
-                                       mask[8:])
+        return '{} {} {} {} {} {}'.format(mask[:2],
+                                          mask[2:4],
+                                          mask[4:6],
+                                          mask[6:8],
+                                          mask[8],
+                                          mask[9:])
 
 
 class ASPathsAnalyser(object):
@@ -395,6 +397,10 @@ class ASPathsAnalyser(object):
         occurrences = Counter([frozenset(asnset) for asnset in trace_path if len(asnset) > 0])
         if occurrences.most_common(1)[0][1] > 1:
             res.add(BGPTracerouteMatch.traceroute_loop)
+        # Test Cogent/NTT case
+        if any(174 in a and 2914 in b for (a, b) in zip(trace_path, trace_path[1:])) and \
+           not (174, 2914) in zip(bgp_path, bgp_path[1:]):
+            res.add(BGPTracerouteMatch.cogent_ntt)
         return res
 
     def warts_stop_reason(self, traceroute):
