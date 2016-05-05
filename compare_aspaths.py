@@ -468,17 +468,17 @@ class ASPathsAnalyser(object):
 def create_parser():
     parser = argparse.ArgumentParser(description='Compare AS paths and traceroute paths.')
     parser.add_argument('--verbose', '-v', action='count', default=0)
-    parser.add_argument('--source-asn', '-s', type=int,
+    parser.add_argument('--source-asn', '-s', type=int, required=True,
                         help="ASN from which the experiment was run")
-    parser.add_argument('--bgp-mapping', '-r',
+    parser.add_argument('--bgp-mapping', '-r', required=True,
                         help="file containing a mrtdump BGP RIB, used for IP-to-AS mapping")
-    parser.add_argument('--bgp-ground-truth', '-b',
+    parser.add_argument('--bgp-ground-truth', '-b', required=True,
                         help="file containing a mrtdump BGP RIB, used as a ground truth for comparing with traceroute paths")
     # TODO: detect automatically whether this is needed or not
     parser.add_argument('--prepend-source-asn', '-p', action='store_true',
                         help="prepend the source ASN to all AS paths found in the ground truth RIB "
                         "(useful if the BGP data was obtained through an iBGP session)")
-    parser.add_argument('--traceroute', '-t',
+    parser.add_argument('--traceroute', '-t', required=True,
                         help="file containing traceroutes to analyse (warts only)")
     return parser
 
