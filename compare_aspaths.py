@@ -85,6 +85,9 @@ class TagsBitMask(object):
     def __eq__(self, other):
         return self.value == other.value
 
+    def __hash__(self):
+        return self.value
+
     def _tags(self):
         highest_bit = (1 << (len(BGPTracerouteMatch) - 1))
         for (i, tag) in enumerate(BGPTracerouteMatch):
