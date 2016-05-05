@@ -113,8 +113,9 @@ class ASPathsAnalyser(object):
     IPV4_NULLADDRESS = IPv4Address("0.0.0.0")
     CACHE_BASEDIR = "cache"
 
-    def __init__(self, source_asn):
+    def __init__(self, source_asn, max_traceroutes=None):
         self.source_asn = source_asn
+        self.max_traceroutes = max_traceroutes
         # Count the number of matches from each class (beware, they are
         # not mutually exclusive).
         self.tags_counter = Counter()
@@ -448,6 +449,10 @@ class ASPathsAnalyser(object):
         for (flags, hops) in w.read_all():
             traceroute = WartsTraceroute(flags, hops)
             self.analyse_traceroute(traceroute)
+            if self.max_traceroutes != None and self.nb_traceroutes >= self.max_traceroutes:
+                logging.info(M("Analysed {} traceroutes, stopping as requested.",
+                               self.max_traceroutes))
+                break
         print("Breakdown of match classes (not mutually exclusive!):")
         # Print a breakdown by tag
         for tag in BGPTracerouteMatch:
@@ -483,6 +488,8 @@ def create_parser():
                         "(useful if the BGP data was obtained through an iBGP session)")
     parser.add_argument('--traceroute', '-t', required=True,
                         help="file containing traceroutes to analyse (warts only)")
+    parser.add_argument('-n', type=int, dest="max_traceroutes",
+                        help="maximum number of traceroutes to analyse (default: everything)")
     return parser
 
 
@@ -494,7 +501,7 @@ if __name__ == '__main__':
         args.verbose = len(levels) - 1
     logging.basicConfig(format='%(message)s',
                         level=levels[args.verbose])
-    a = ASPathsAnalyser(args.source_asn)
+    a = ASPathsAnalyser(args.source_asn, args.max_traceroutes)
     a.load_peeringdb()
     a.load_bgp_mapping(args.bgp_mapping)
     a.load_bgp_ground_truth(args.bgp_ground_truth, args.prepend_source_asn)
