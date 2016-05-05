@@ -86,8 +86,14 @@ class TagsBitMask(object):
         return self.value == other.value
 
     def __str__(self):
-        return '{:0>{}}'.format(bin(self.value).lstrip('0b'),
+        mask = '{:0>{}}'.format(bin(self.value).lstrip('0b'),
                                 len(BGPTracerouteMatch))
+        # Separate components for readability
+        return '{} {} {} {} {}'.format(mask[:2],
+                                       mask[2:4],
+                                       mask[4:6],
+                                       mask[6:8],
+                                       mask[8:])
 
 
 class ASPathsAnalyser(object):
