@@ -85,6 +85,16 @@ class TagsBitMask(object):
     def __eq__(self, other):
         return self.value == other.value
 
+    def _tags(self):
+        highest_bit = (1 << (len(BGPTracerouteMatch) - 1))
+        for (i, tag) in enumerate(BGPTracerouteMatch):
+            if self.value & (highest_bit >> i):
+                yield tag
+
+    def tags(self):
+        """Return the list of tags represented by this bitmask"""
+        return list(self._tags())
+
     def __str__(self):
         mask = '{:0>{}}'.format(bin(self.value).lstrip('0b'),
                                 len(BGPTracerouteMatch))
@@ -436,15 +446,23 @@ class ASPathsAnalyser(object):
             traceroute = WartsTraceroute(flags, hops)
             self.analyse_traceroute(traceroute)
         print("Breakdown of match classes (not mutually exclusive!):")
+        # Print a breakdown by tag
         for tag in BGPTracerouteMatch:
             count = self.tags_counter[tag]
             if count == 0:
                 continue
-            print("{:24} {:6}  {:6.2%}  {}".format(tag.name,
+            print("{:24} {:6}  {:7.2%}  {}".format(tag.name,
                                                    count,
                                                    count / self.nb_traceroutes,
                                                    tag.value))
-        print("{:24} {:6} {:6.2%}".format("Total", self.nb_traceroutes, 1))
+        # Print a breakdown by bitmask
+        print("\nBreakdown by combination of tags (bitmasks):")
+        for (bitmask, count) in self.bitmask_counter.most_common():
+            tags = ' '.join([t.name for t in bitmask.tags()])
+            print('{:24} {:6}  {:7.2%}  {}'.format(bitmask, count,
+                                                   count / self.nb_traceroutes,
+                                                   tags))
+        print("{:24} {:6}  {:7.2%}".format("Total", self.nb_traceroutes, 1))
 
 
 def create_parser():
