@@ -413,8 +413,8 @@ class ASPathsAnalyser(object):
         matches.add(self.warts_stop_reason(traceroute))
         bitmask = TagsBitMask(matches)
         all_tags = [m.name for m in matches]
-        logging.debug(M("Matches for {}: {} {}", traceroute.flags['dstaddr'],
-                        bitmask, ' '.join(all_tags)))
+        logging.debug(M("Matches for {}: {} ({})", traceroute.flags['dstaddr'],
+                        ' '.join(all_tags), bitmask))
         self.tags_counter.update(matches)
         self.bitmask_counter[bitmask] += 1
         self.nb_traceroutes += 1
