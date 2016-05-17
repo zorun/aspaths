@@ -46,8 +46,8 @@ class BGPTracerouteMatch(Enum):
     """
     # Define iteration order for python2 (python3 uses definition order by default)
     __order__ = "exact_match exact_match_only_known missing_in_bgp missing_in_traceroute \
-    distinct_asn distinct_but_same_second no_bgp traceroute_loop warts_none \
-    warts_completed warts_unreach warts_icmp warts_loop warts_gaplimit \
+    distinct_asn distinct_but_same_second no_bgp traceroute_loop cogent_ntt \
+    warts_none warts_completed warts_unreach warts_icmp warts_loop warts_gaplimit \
     warts_error warts_hoplimit warts_gss warts_halted"
 
     exact_match = "Exact match"
