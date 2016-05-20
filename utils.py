@@ -3,6 +3,22 @@ from __future__ import print_function, unicode_literals
 import gzip, bz2
 
 
+class M(object):
+    """Simple message class to allow to use {}-style formatting with the
+    logging module.  For details, see:
+
+    https://docs.python.org/3/howto/logging-cookbook.html#using-custom-message-objects
+
+    """
+    def __init__(self, fmt, *args, **kwargs):
+        self.fmt = fmt
+        self.args = args
+        self.kwargs = kwargs
+
+    def __str__(self):
+        return self.fmt.format(*self.args, **self.kwargs)
+
+
 def uniq(l):
     """Given a sequence of objects, suppress consecutive duplicate elements
     (similar to the Unix command 'uniq')"""
