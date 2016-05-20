@@ -32,7 +32,8 @@ class BGPTracerouteMatch(Enum):
     """
     # Define iteration order for python2 (python3 uses definition order by default)
     __order__ = "exact_match exact_match_only_known missing_in_bgp missing_in_traceroute \
-    distinct_asn distinct_but_same_second no_bgp traceroute_loop cogent_ntt \
+    distinct_asn distinct_but_same_second no_bgp traceroute_loop destination_as_mismatch \
+    cogent_ntt \
     warts_none warts_completed warts_unreach warts_icmp warts_loop warts_gaplimit \
     warts_error warts_hoplimit warts_gss warts_halted"
 
@@ -44,6 +45,7 @@ class BGPTracerouteMatch(Enum):
     distinct_but_same_second = "Both AS-paths exhibit distinct ASN, but the second known ASN is the same"
     no_bgp = "Empty BGP AS-path"
     traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
+    destination_as_mismatch = "Origin AS for destination IP is not consistent (IP-to-AS mapping issue)"
     cogent_ntt = "Traceroute path has [Cogent, NTT], but BGP path has [Cogent, not NTT]"
     warts_none = "No stopping reason"
     warts_completed = "Got an ICMP port unreachable"
@@ -92,9 +94,9 @@ class TagsBitMask(object):
         return '{} {} {} {} {} {}'.format(mask[:2],
                                           mask[2:4],
                                           mask[4:6],
-                                          mask[6:8],
-                                          mask[8],
-                                          mask[9:])
+                                          mask[6:9],
+                                          mask[9],
+                                          mask[10:])
 
 
 class ASPathsAnalyser(object):
@@ -343,6 +345,8 @@ class ASPathsAnalyser(object):
                 res.add(BGPTracerouteMatch.distinct_but_same_second)
         if len(bgp_path) == 0:
             res.add(BGPTracerouteMatch.no_bgp)
+        elif bgp_path[-1] not in trace_path[-1]:
+            res.add(BGPTracerouteMatch.destination_as_mismatch)
         occurrences = Counter([frozenset(asnset) for asnset in trace_path if len(asnset) > 0])
         if occurrences.most_common(1)[0][1] > 1:
             res.add(BGPTracerouteMatch.traceroute_loop)
