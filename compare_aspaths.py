@@ -275,19 +275,20 @@ class ASPathsAnalyser(object):
         data = list()
         max_len = [1, 1, 1]
         hops = [hop['addr'] for hop in traceroute.hops]
-        for ip in hops:
-            if ip == "0.0.0.0":
+        for ip_str in hops:
+            if ip_str == "0.0.0.0":
                 data.append(('X', 'X', 'X'))
             else:
-                asn_set = self.ip_to_asn(ip_address(ip))
+                ip = ip_address(ip_str)
+                asn_set = self.ip_to_asn(ip)
                 if len(asn_set) == 0:
                     asn = 'X'
                 else:
                     asn = ','.join(str(asn) for asn in sorted(asn_set))
-                hostname = socket.getfqdn(ip)
-                if hostname == ip:
+                hostname = socket.getfqdn(str(ip)) if not ip.is_private else 'X'
+                if hostname == str(ip):
                     hostname = 'X'
-                data.append((ip, asn, hostname))
+                data.append((str(ip), asn, hostname))
                 max_len[0] = max(max_len[0], len(ip))
                 max_len[1] = max(max_len[1], len(asn))
                 max_len[2] = max(max_len[2], len(hostname))
