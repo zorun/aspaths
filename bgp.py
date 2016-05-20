@@ -71,6 +71,8 @@ class BGPASPathLoader(object):
                 except ValueError:
                     continue
                 ribs[date] = os.path.join(dir, f)
+        logging.info(M("[BGP] {} RIB dumps found",
+                       len(ribs)))
         self.rib_filenames = IntervalDict()
         self.rib_filenames.fromdict(ribs)
 
