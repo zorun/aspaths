@@ -33,7 +33,7 @@ class BGPTracerouteMatch(Enum):
     # Define iteration order for python2 (python3 uses definition order by default)
     __order__ = "exact_match exact_match_only_known missing_in_bgp missing_in_traceroute \
     distinct_asn distinct_but_same_second no_bgp traceroute_loop destination_as_mismatch \
-    cogent_ntt \
+    cogent_ntt rfc7789_candidate \
     warts_none warts_completed warts_unreach warts_icmp warts_loop warts_gaplimit \
     warts_error warts_hoplimit warts_gss warts_halted"
 
@@ -47,6 +47,7 @@ class BGPTracerouteMatch(Enum):
     traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
     destination_as_mismatch = "Origin AS for destination IP is not consistent (IP-to-AS mapping issue)"
     cogent_ntt = "Traceroute path has [Cogent, NTT], but BGP path has [Cogent, not NTT]"
+    rfc7789_candidate = "Traceroute path ends with A Y B while BGP path ends with A B"
     warts_none = "No stopping reason"
     warts_completed = "Got an ICMP port unreachable"
     warts_unreach = "Got an other ICMP unreachable code"
@@ -95,8 +96,8 @@ class TagsBitMask(object):
                                           mask[2:4],
                                           mask[4:6],
                                           mask[6:9],
-                                          mask[9],
-                                          mask[10:])
+                                          mask[9:11],
+                                          mask[11:])
 
 
 class ASPathsAnalyser(object):
@@ -354,6 +355,12 @@ class ASPathsAnalyser(object):
         if any(174 in a and 2914 in b for (a, b) in zip(trace_path, trace_path[1:])) and \
            not (174, 2914) in zip(bgp_path, bgp_path[1:]):
             res.add(BGPTracerouteMatch.cogent_ntt)
+        # Test RFC7789-like mismatch
+        if len(bgp_path) >= 2 and len(trace_path_only_known) >= 3:
+            (a, b) = bgp_path[-2:]
+            (x, y, z) = trace_path_only_known[-3:]
+            if a in x and b in z:
+                res.add(BGPTracerouteMatch.rfc7789_candidate)
         return res
 
     def warts_stop_reason(self, traceroute):
