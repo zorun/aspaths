@@ -10,14 +10,15 @@ import logging
 import socket
 from enum import Enum
 import argparse
+import datetime
 
 from pytricia import PyTricia
 
 import warts
 import peeringdb
 import utils
-from bgp import load_rib_mrtdump
 from utils import M
+from bgp import load_rib_mrtdump, BGPASPathLoader
 
 
 WartsTraceroute = namedtuple('WartsTraceroute', ['flags', 'hops'])
@@ -100,9 +101,13 @@ class ASPathsAnalyser(object):
     IPV4_NULLADDRESS = IPv4Address("0.0.0.0")
     CACHE_BASEDIR = "cache"
 
-    def __init__(self, source_asn, max_traceroutes=None):
-        self.source_asn = source_asn
-        self.max_traceroutes = max_traceroutes
+    def __init__(self, args):
+        self.source_asn = args.source_asn
+        self.max_traceroutes = args.max_traceroutes
+        # Automatic BGP loader to get AS paths
+        prepended_source_asn = args.source_asn if args.prepend_source_asn else None
+        self.bgp_loader = BGPASPathLoader(args.root_dir, args.ribfile_format,
+                                          prepended_source_asn)
         # Count the number of matches from each class (beware, they are
         # not mutually exclusive).
         self.tags_counter = Counter()
@@ -203,48 +208,6 @@ class ASPathsAnalyser(object):
             return self.bgp_origin[ip]
         except KeyError:
             return set()
-
-    def load_bgp_ground_truth(self, filename, prepend_source_asn=False):
-        """Loads the BGP table from the source ASN, and store it in a
-        prefix tree.
-        """
-        # This maps each IP prefix to its AS path
-        self.bgp_aspath = PyTricia()
-        logging.info("[BGP] Loading BGP data from source AS...")
-        for elem in load_rib_mrtdump(filename):
-            prefix = elem.fields['prefix']
-            # Discard IPv6 prefixes (crude but fast)
-            if ':' in prefix:
-                continue
-            if len(elem.fields['as-path']) == 0:
-                logging.warning(M("Prefix {} with empty AS-path", prefix))
-                continue
-            # In rare cases, we have an as-set (BGP aggregation).
-            # We simply take the first ASN for now.
-            # TODO: possible MOAS
-            as_path = [int(asn.strip(b'{}').split(b',')[0])
-                       for asn in elem.fields['as-path'].split(b' ')]
-            if prepend_source_asn:
-                as_path.insert(0, self.source_asn)
-            if as_path[0] != self.source_asn:
-                #msg = "AS path for prefix {} does not start with source AS ({}): {}"
-                #logging.error(M(msg, prefix, self.source_asn, as_path))
-                continue
-            self.bgp_aspath[prefix] = as_path
-        logging.info(M("[BGP] Loaded {} BGP ground-truth prefixes from source AS",
-                       len(self.bgp_aspath)))
-
-    def get_aspath(self, ip):
-        """Using the BGP ground truth, returns the AS-path for the most
-        specific prefix seen by self.source_asn, with AS-path
-        prepending removed.  If no prefix is found, an empty list is
-        returned.
-        """
-        try:
-            raw_path = self.bgp_aspath[ip]
-            return list(utils.uniq(raw_path))
-        except KeyError:
-            return []
 
     def load_peeringdb(self):
         p = peeringdb.PeeringDB('.')
@@ -419,7 +382,9 @@ class ASPathsAnalyser(object):
             traceroute.hops.append(empty_hop)
             traceroute.hops.append(final_hop)
         aspath = self.traceroute_aspath(traceroute)
-        bgp_aspath = self.get_aspath(traceroute.flags['dstaddr'].encode())
+        date = datetime.datetime.utcfromtimestamp(traceroute.flags['timeval'])
+        bgp_aspath = self.bgp_loader.get_aspath(traceroute.flags['dstaddr'].encode(),
+                                                date)
         matches = self.classify_match(aspath, bgp_aspath)
         matches.add(self.warts_stop_reason(traceroute))
         bitmask = TagsBitMask(matches)
@@ -471,8 +436,6 @@ def create_parser():
                         help="ASN from which the experiment was run")
     parser.add_argument('--bgp-mapping', '-r', required=True,
                         help="file containing a mrtdump BGP RIB, used for IP-to-AS mapping")
-    parser.add_argument('--bgp-ground-truth', '-b', required=True,
-                        help="file containing a mrtdump BGP RIB, used as a ground truth for comparing with traceroute paths")
     # TODO: detect automatically whether this is needed or not
     parser.add_argument('--prepend-source-asn', '-p', action='store_true',
                         help="prepend the source ASN to all AS paths found in the ground truth RIB "
@@ -481,6 +444,11 @@ def create_parser():
                         help="file containing traceroutes to analyse (warts only)")
     parser.add_argument('-n', type=int, dest="max_traceroutes",
                         help="maximum number of traceroutes to analyse (default: everything)")
+    parser.add_argument('--rib-format', '-f', dest="ribfile_format",
+                        default="rib.ipv4.%Y%m%d.%H%M.bz2",
+                        help="format of RIB dump filenames (default: '%(default)s')")
+    parser.add_argument('root_dir',
+                        help="directory containing the RIB dumps as mrtdump, used to determine BGP AS paths")
     return parser
 
 
@@ -492,8 +460,7 @@ if __name__ == '__main__':
         args.verbose = len(levels) - 1
     logging.basicConfig(format='%(message)s',
                         level=levels[args.verbose])
-    a = ASPathsAnalyser(args.source_asn, args.max_traceroutes)
+    a = ASPathsAnalyser(args)
     a.load_peeringdb()
     a.load_bgp_mapping(args.bgp_mapping)
-    a.load_bgp_ground_truth(args.bgp_ground_truth, args.prepend_source_asn)
     a.analyse_traceroutes(args.traceroute)
