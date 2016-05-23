@@ -279,10 +279,10 @@ class ASPathsAnalyser(object):
         max_len = [1, 1, 1]
         hops = [hop['addr'] for hop in traceroute.hops]
         for ip_str in hops:
-            if ip_str == "0.0.0.0":
+            ip = ip_address(ip_str)
+            if ip == self.IPV4_NULLADDRESS:
                 data.append(('X', 'X', 'X'))
             else:
-                ip = ip_address(ip_str)
                 asn_set = self.ip_to_asn(ip)
                 if len(asn_set) == 0:
                     asn = 'X'
@@ -292,7 +292,7 @@ class ASPathsAnalyser(object):
                 if hostname == str(ip):
                     hostname = 'X'
                 data.append((str(ip), asn, hostname))
-                max_len[0] = max(max_len[0], len(ip))
+                max_len[0] = max(max_len[0], len(str(ip)))
                 max_len[1] = max(max_len[1], len(asn))
                 max_len[2] = max(max_len[2], len(hostname))
         for (ip, asn, hostname) in data:
