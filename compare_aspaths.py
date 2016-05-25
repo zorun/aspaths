@@ -4,7 +4,7 @@ from __future__ import print_function, unicode_literals, division
 
 import os
 from ipaddress import ip_network, ip_address, IPv4Address, IPv6Address, IPv4Network
-from collections import namedtuple, Counter
+from collections import namedtuple, Counter, defaultdict
 import cPickle as pickle
 import logging
 import socket
@@ -118,6 +118,22 @@ class ASPathsAnalyser(object):
         self.bitmask_counter = Counter()
         # Number of traceroutes processed
         self.nb_traceroutes = 0
+        # Debug related to the Cogent/NTT case
+        self.debug_cogent_ntt = args.debug_cogent_ntt
+        # Count global number of BGP paths satisfying some criteria
+        self.cogent_bgp_paths = 0
+        self.cogent_level3_bgp_paths = 0
+        self.cogent_ntt_bgp_paths = 0
+        # Dictionnary mapping origin AS to statistics related to BGP
+        # paths: "nb_paths" (total number of BGP paths towards the given
+        # AS), "nb_paths_cogent" (number of BGP paths going through
+        # Cogent), "nb_paths_bug" (number of BGP paths exhibiting the
+        # Cogent/NTT bug)
+        self.cogent_ntt_stats = defaultdict(Counter)
+        # Dictionnary mapping origin AS to a counter of BGP next-hop
+        # ASes found just after Cogent in the BGP paths (it only takes
+        # into account BGP paths going through Cogent)
+        self.bgp_next_hops = defaultdict(Counter)
 
     def ris_cache_filename(self, ris_filename):
         """Use the input filename to determine a cache filename"""
@@ -369,6 +385,25 @@ class ASPathsAnalyser(object):
         tag_name = "warts_" + reason.lower()
         return BGPTracerouteMatch[tag_name]
 
+    def gather_cogent_ntt_stats(self, traceroute, aspath, bgp_aspath, matches):
+        if len(bgp_aspath) == 0:
+            return
+        origin_as = bgp_aspath[-1]
+        self.cogent_ntt_stats[origin_as]["nb_paths"] += 1
+        if 174 in bgp_aspath:
+            self.cogent_bgp_paths += 1
+            self.cogent_ntt_stats[origin_as]["nb_paths_cogent"] += 1
+            # Cogent can be the origin of the prefix
+            if bgp_aspath[-1] != 174:
+                next_hop_as = bgp_aspath[bgp_aspath.index(174) + 1]
+                self.bgp_next_hops[origin_as][next_hop_as] += 1
+        if (174, 3356) in zip(bgp_aspath, bgp_aspath[1:]):
+            self.cogent_level3_bgp_paths += 1
+        if (174, 2914) in zip(bgp_aspath, bgp_aspath[1:]):
+            self.cogent_ntt_bgp_paths += 1
+        if BGPTracerouteMatch.cogent_ntt in matches:
+            self.cogent_ntt_stats[origin_as]["nb_paths_bug"] += 1
+
     def analyse_traceroute(self, traceroute):
         if len(traceroute.hops) == 0:
             return
@@ -403,14 +438,18 @@ class ASPathsAnalyser(object):
         all_tags = [m.name for m in matches]
         logging.debug(M("Matches for {}: {} ({})", traceroute.flags['dstaddr'],
                         ' '.join(all_tags), bitmask))
+        # Update statistics
         self.tags_counter.update(matches)
         self.bitmask_counter[bitmask] += 1
         self.nb_traceroutes += 1
+        # Debug
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
                 self.debug_aspaths(aspath, bgp_aspath)
                 self.debug_traceroute(traceroute)
                 logging.debug('--')
+        if self.debug_cogent_ntt:
+            self.gather_cogent_ntt_stats(traceroute, aspath, bgp_aspath, matches)
 
     def analyse_traceroutes(self, filename):
         w = warts.WartsReader(filename)
@@ -439,6 +478,33 @@ class ASPathsAnalyser(object):
                                                    count / self.nb_traceroutes,
                                                    tags))
         print("{:24} {:6}  {:7.2%}".format("Total", self.nb_traceroutes, 1))
+        # Print statistics about Cogent/NTT bug
+        if self.debug_cogent_ntt:
+            print("\nGlobal Cogent/NTT stats:")
+            print("[*] {:45}: {}".format("Total number of paths",
+                                         self.nb_traceroutes))
+            print("[*] {:45}: {}".format("Number of BGP paths through Cogent",
+                                         self.cogent_bgp_paths))
+            print("[*] {:45}: {}".format("Number of BGP paths through Cogent, Level3",
+                                         self.cogent_level3_bgp_paths))
+            print("[*] {:45}: {}".format("Number of BGP paths through Cogent, NTT",
+                                         self.cogent_ntt_bgp_paths))
+            print("[*] {:45}: {}".format("Number of paths exhibiting Cogent/NTT bug",
+                                         self.tags_counter[BGPTracerouteMatch.cogent_ntt]))
+            print("\nPer-origin-ASN Cogent/NTT stats:")
+            for origin_as in self.cogent_ntt_stats:
+                # Only include AS with at least one buggy path
+                if self.cogent_ntt_stats[origin_as]["nb_paths_bug"] == 0:
+                    continue
+                print("\nAS{}".format(origin_as))
+                print("[*] {:45}: {}".format("Total number of paths",
+                                             self.cogent_ntt_stats[origin_as]["nb_paths"]))
+                print("[*] {:45}: {}".format("Number of BGP paths through Cogent",
+                                             self.cogent_ntt_stats[origin_as]["nb_paths_cogent"]))
+                print("[*] {:45}: {}".format("Number of paths exhibiting Cogent/NTT bug",
+                                             self.cogent_ntt_stats[origin_as]["nb_paths_bug"]))
+                print("[*] {:45}: {}".format("BGP next-hops after Cogent",
+                                             self.bgp_next_hops[origin_as].most_common()))
 
 
 def create_parser():
@@ -456,6 +522,8 @@ def create_parser():
                         help="file containing traceroutes to analyse (warts only)")
     parser.add_argument('-n', type=int, dest="max_traceroutes",
                         help="maximum number of traceroutes to analyse (default: everything)")
+    parser.add_argument('--debug-cogent-ntt', action="store_true",
+                        help="print some debug statistics about the Cogent/NTT bug")
     parser.add_argument('--rib-format', '-f', dest="ribfile_format",
                         default="rib.ipv4.%Y%m%d.%H%M.bz2",
                         help="format of RIB dump filenames (default: '%(default)s')")
