@@ -58,7 +58,9 @@ Without any verbosity setting, the script will be completely silent during its r
 and when it has finished crunching data, it will spit out statistics about AS-paths found.
 
 Use one `-v` flag to get a few indications about what it is doing.  When using two `-v`,
-the script will show every traceroute whose AS-path does not match the BGP data.
-Note that this mode is much slower, because a lot of DNS queries are made to display
+the script will show information on every traceroute whose AS-path does not match the
+BGP data, on standard error.  Lastly, you can use the `--debug-traceroute` flag to
+display the traceroutes themselves (only those for which there is a mismatch).
+Note that this last mode is much slower, because a lot of DNS queries are made to display
 the reverse name of traceroute hops.
 

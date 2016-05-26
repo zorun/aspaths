@@ -118,6 +118,8 @@ class ASPathsAnalyser(object):
         self.bitmask_counter = Counter()
         # Number of traceroutes processed
         self.nb_traceroutes = 0
+        # Display traceroutes that mismatch?
+        self.debug_traceroutes = args.debug_traceroutes
         # Debug related to the Cogent/NTT case
         self.debug_cogent_ntt = args.debug_cogent_ntt
         # Count global number of BGP paths satisfying some criteria
@@ -460,7 +462,9 @@ class ASPathsAnalyser(object):
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
                 self.debug_aspaths(aspath, bgp_aspath)
+            if self.debug_traceroutes:
                 self.debug_traceroute(traceroute)
+            if logging.root.isEnabledFor(logging.DEBUG) or self.debug_traceroutes:
                 logging.debug('--')
         if self.debug_cogent_ntt:
             self.gather_cogent_ntt_stats(traceroute, aspath, bgp_aspath, matches)
@@ -541,6 +545,8 @@ def create_parser():
                         help="file containing traceroutes to analyse (warts only)")
     parser.add_argument('-n', type=int, dest="max_traceroutes",
                         help="maximum number of traceroutes to analyse (default: everything)")
+    parser.add_argument('--debug-traceroutes', action="store_true",
+                        help="print traceroutes for which there is a path mismatch")
     parser.add_argument('--debug-cogent-ntt', action="store_true",
                         help="print some debug statistics about the Cogent/NTT bug")
     parser.add_argument('--rib-format', '-f', dest="ribfile_format",
