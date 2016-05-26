@@ -134,6 +134,9 @@ class ASPathsAnalyser(object):
         # ASes found just after Cogent in the BGP paths (it only takes
         # into account BGP paths going through Cogent)
         self.bgp_next_hops = defaultdict(Counter)
+        # Count the occurrences of the second AS hop after Cogent
+        # (both for BGP and traceroute paths, as a pair).
+        self.cogent_second_hops = Counter()
 
     def ris_cache_filename(self, ris_filename):
         """Use the input filename to determine a cache filename"""
@@ -403,6 +406,16 @@ class ASPathsAnalyser(object):
             self.cogent_ntt_bgp_paths += 1
         if BGPTracerouteMatch.cogent_ntt in matches:
             self.cogent_ntt_stats[origin_as]["nb_paths_bug"] += 1
+            second_bgp_hop = None
+            if len(bgp_aspath[bgp_aspath.index(174):]) >= 3:
+                second_bgp_hop = bgp_aspath[bgp_aspath.index(174) + 2]
+            second_trace_hop = None
+            aspath_only_known = [asnset for asnset in aspath if len(asnset) > 0]
+            for (as_set1, as_set2) in zip(aspath_only_known, aspath_only_known[1:]):
+                if 2914 in as_set1:
+                    second_trace_hop = ",".join([str(asn) for asn in as_set2])
+                    break
+            self.cogent_second_hops[(second_bgp_hop, second_trace_hop)] += 1
 
     def analyse_traceroute(self, traceroute):
         if len(traceroute.hops) == 0:
@@ -491,6 +504,11 @@ class ASPathsAnalyser(object):
                                          self.cogent_ntt_bgp_paths))
             print("[*] {:45}: {}".format("Number of paths exhibiting Cogent/NTT bug",
                                          self.tags_counter[BGPTracerouteMatch.cogent_ntt]))
+            print("\nSecond AS hop after Cogent, for paths exhibiting Cogent/NTT bug:")
+            for ((bgp, traceroute), count) in self.cogent_second_hops.most_common():
+                print("bgp={:<6}, traceroute={:<10} => {:5} occurrences".format(bgp,
+                                                                                traceroute,
+                                                                                count))
             print("\nPer-origin-ASN Cogent/NTT stats:")
             for origin_as in self.cogent_ntt_stats:
                 # Only include AS with at least one buggy path
