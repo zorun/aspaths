@@ -372,6 +372,7 @@ class ASPathsAnalyser(object):
             res.add(BGPTracerouteMatch.traceroute_loop)
         # Test Cogent/NTT case
         if any(174 in a and 2914 in b for (a, b) in zip(trace_path, trace_path[1:])) and \
+           174 in bgp_path and \
            not (174, 2914) in zip(bgp_path, bgp_path[1:]):
             res.add(BGPTracerouteMatch.cogent_ntt)
         # Test RFC7789-like mismatch
