@@ -410,7 +410,8 @@ class ASPathsAnalyser(object):
             self.cogent_level3_bgp_paths += 1
         if (174, 2914) in zip(bgp_aspath, bgp_aspath[1:]):
             self.cogent_ntt_bgp_paths += 1
-        if BGPTracerouteMatch.cogent_ntt in matches:
+        cogentntt_matches = {BGPTracerouteMatch.cogent_ntt, BGPTracerouteMatch.ntt_router_madrid}
+        if cogentntt_matches.issubset(matches):
             self.cogent_ntt_stats[origin_as]["nb_paths_bug"] += 1
             second_bgp_hop = None
             if len(bgp_aspath[bgp_aspath.index(174):]) >= 3:
