@@ -33,7 +33,7 @@ class BGPTracerouteMatch(Enum):
     # Define iteration order for python2 (python3 uses definition order by default)
     __order__ = "exact_match exact_match_only_known missing_in_bgp missing_in_traceroute \
     distinct_asn distinct_but_same_second no_bgp traceroute_loop destination_as_mismatch \
-    cogent_ntt rfc7789_candidate \
+    cogent_ntt ntt_router_madrid rfc7789_candidate \
     warts_none warts_completed warts_unreach warts_icmp warts_loop warts_gaplimit \
     warts_error warts_hoplimit warts_gss warts_halted"
 
@@ -47,6 +47,7 @@ class BGPTracerouteMatch(Enum):
     traceroute_loop = "AS loop in the traceroute (same AS seen at least 2 times)"
     destination_as_mismatch = "Origin AS for destination IP is not consistent (IP-to-AS mapping issue)"
     cogent_ntt = "Traceroute path has [Cogent, NTT], but BGP path has [Cogent, not NTT]"
+    ntt_router_madrid = "A router from NTT in Madrid (130.117.14.190) is present in the traceroute"
     rfc7789_candidate = "Traceroute path ends with A Y B while BGP path ends with A B"
     warts_none = "No stopping reason"
     warts_completed = "Got an ICMP port unreachable"
@@ -96,8 +97,8 @@ class TagsBitMask(object):
                                           mask[2:4],
                                           mask[4:6],
                                           mask[6:9],
-                                          mask[9:11],
-                                          mask[11:])
+                                          mask[9:12],
+                                          mask[12:])
 
 
 class ASPathsAnalyser(object):
@@ -336,7 +337,7 @@ class ASPathsAnalyser(object):
         logging.debug(M("BGP AS-path:        {}", bgp))
         logging.debug(M("Traceroute AS-path: {}", traceroute))
 
-    def classify_match(self, trace_path, bgp_path):
+    def classify_match(self, traceroute, trace_path, bgp_path):
         """Classify the relation between a traceroute AS path and a BGP AS path.
         Returns a set of BGPTracerouteMatch enum members"""
         res = set()
@@ -377,6 +378,8 @@ class ASPathsAnalyser(object):
            174 in bgp_path and \
            not (174, 2914) in zip(bgp_path, bgp_path[1:]):
             res.add(BGPTracerouteMatch.cogent_ntt)
+        if any(hop['addr'] == u"130.117.14.190" for hop in traceroute.hops):
+            res.add(BGPTracerouteMatch.ntt_router_madrid)
         # Test RFC7789-like mismatch
         if len(bgp_path) >= 2 and len(trace_path_only_known) >= 3:
             (a, b) = bgp_path[-2:]
@@ -448,7 +451,7 @@ class ASPathsAnalyser(object):
         date = datetime.datetime.utcfromtimestamp(traceroute.flags['timeval'])
         bgp_aspath = self.bgp_loader.get_aspath(traceroute.flags['dstaddr'].encode(),
                                                 date)
-        matches = self.classify_match(aspath, bgp_aspath)
+        matches = self.classify_match(traceroute, aspath, bgp_aspath)
         matches.add(self.warts_stop_reason(traceroute))
         bitmask = TagsBitMask(matches)
         all_tags = [m.name for m in matches]
