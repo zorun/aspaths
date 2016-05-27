@@ -11,6 +11,8 @@ import socket
 from enum import Enum
 import argparse
 import datetime
+import sys
+import subprocess
 
 from pytricia import PyTricia
 
@@ -560,6 +562,21 @@ def create_parser():
                         help="directory containing the RIB dumps as mrtdump, used to determine BGP AS paths")
     return parser
 
+def print_version():
+    try:
+        revision = subprocess.check_output(["git", "rev-parse", "HEAD"])
+        revision = revision.decode('utf-8').strip()
+        msg = "# Git revision: {}".format(revision)
+    except subprocess.CalledProcessError as e:
+        msg = "# Error getting git version: return code {}".format(e.returncode)
+    print(msg)
+    print(msg, file=sys.stderr)
+
+def print_args():
+    msg = "# Command: {}".format(" ".join(sys.argv))
+    print(msg)
+    print(msg, file=sys.stderr)
+
 
 if __name__ == '__main__':
     parser = create_parser()
@@ -569,6 +586,8 @@ if __name__ == '__main__':
         args.verbose = len(levels) - 1
     logging.basicConfig(format='%(message)s',
                         level=levels[args.verbose])
+    print_version()
+    print_args()
     a = ASPathsAnalyser(args)
     a.load_peeringdb()
     a.load_bgp_mapping(args.bgp_mapping)
