@@ -59,7 +59,7 @@ and when it has finished crunching data, it will spit out statistics about AS-pa
 
 Use one `-v` flag to get a few indications about what it is doing.  When using two `-v`,
 the script will show information on every traceroute whose AS-path does not match the
-BGP data, on standard error.  Lastly, you can use the `--debug-traceroute` flag to
+BGP data, on standard error.  Lastly, you can use the `--debug-traceroutes` flag to
 display the traceroutes themselves (only those for which there is a mismatch).
 Note that this last mode is much slower, because a lot of DNS queries are made to display
 the reverse name of traceroute hops.
