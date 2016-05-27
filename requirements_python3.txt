@@ -1,4 +1,4 @@
-git+git://github.com/zorun/pytricia#egg=pytricia
+pytricia==0.9.1
 pybgpstream==1.1.0
 netaddr==0.7.18
 infinity==1.4
