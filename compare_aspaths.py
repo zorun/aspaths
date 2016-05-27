@@ -562,13 +562,30 @@ def create_parser():
                         help="directory containing the RIB dumps as mrtdump, used to determine BGP AS paths")
     return parser
 
-def print_version():
+def print_metadata():
+    # Date
+    msg = "# Date: {}".format(datetime.datetime.utcnow().strftime("%c UTC"))
+    print(msg)
+    print(msg, file=sys.stderr)
+    # Hostname
+    msg = "# Hostname: {}".format(os.uname()[1])
+    print(msg)
+    print(msg, file=sys.stderr)
+    # Working directory
+    msg = "# Current working directory: {}".format(os.getcwd())
+    print(msg)
+    print(msg, file=sys.stderr)
+    # Git version
     try:
         revision = subprocess.check_output(["git", "rev-parse", "HEAD"])
         revision = revision.decode('utf-8').strip()
         msg = "# Git revision: {}".format(revision)
     except subprocess.CalledProcessError as e:
         msg = "# Error getting git version: return code {}".format(e.returncode)
+    print(msg)
+    print(msg, file=sys.stderr)
+    # Python version
+    msg = "# Python version: {}".format(sys.version.replace('\n', ' '))
     print(msg)
     print(msg, file=sys.stderr)
 
@@ -586,7 +603,7 @@ if __name__ == '__main__':
         args.verbose = len(levels) - 1
     logging.basicConfig(format='%(message)s',
                         level=levels[args.verbose])
-    print_version()
+    print_metadata()
     print_args()
     a = ASPathsAnalyser(args)
     a.load_peeringdb()
