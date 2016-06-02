@@ -35,6 +35,11 @@ def load_rib_mrtdump(filename):
 def load_update_mrtdump(filename):
     return load_mrtdump(filename, "upd-file")
 
+def communities_to_string(communities):
+    """Transforms a list of communities to a list of strings, suitable for
+    printing."""
+    return ['{}:{}'.format(c['asn'], c['value']) for c in communities]
+
 
 class BGPASPathLoader(object):
     """Loads RIB data in mrtdump format and allow to query AS paths at
@@ -56,6 +61,8 @@ class BGPASPathLoader(object):
         self.prepended_source_asn = prepended_source_asn
         # For each RIB file, map IP prefixes to their AS path
         self.bgp_aspath = defaultdict(PyTricia)
+        # For each RIB file, map IP prefixes to their communities
+        self.communities = defaultdict(PyTricia)
         self.load_rib_filenames()
 
     def load_rib_filenames(self):
@@ -110,6 +117,9 @@ class BGPASPathLoader(object):
             if len(elem.fields['as-path']) == 0:
                 logging.warning(M("Prefix {} with empty AS-path", prefix))
                 continue
+            # Store communities
+            communities = elem.fields['communities'] if 'communities' in elem.fields else []
+            self.communities[filename][prefix] = communities_to_string(communities)
             # In rare cases, we have an as-set (BGP aggregation).
             # We simply take the first ASN for now.
             # TODO: possible MOAS
@@ -122,13 +132,9 @@ class BGPASPathLoader(object):
                        len(self.bgp_aspath[filename])))
         self.save_rib_to_cache(filename)
 
-    def get_aspath(self, ip, date):
-        """Given an IP address and a datetime object, return the AS path as
-        seen from the last BGP RIB dump before this instant.  We use
-        the most specific prefix for this IP, and we remove duplicate
-        ASN (path-prepending).  If no prefix is found, an empty list
-        is returned.
-        """
+    def _safe_rib_filename(self, ip, date):
+        """Checks the validity of the date and loads the relevant RIB file if
+        needed.  Returns the relevant RIB filename."""
         if not isinstance(date, datetime.datetime):
             raise TypeError("datetime object expected")
         rib_filename = self.rib_filenames.get(date)
@@ -136,8 +142,39 @@ class BGPASPathLoader(object):
             raise ValueError("no BGP data for this date")
         # Make sure we have loaded the RIB file
         self.load_rib_file(rib_filename)
+        return rib_filename
+
+    def get_aspath(self, ip, date):
+        """Given an IP address and a datetime object, return the AS path as
+        seen from the last BGP RIB dump before this instant.  We use
+        the most specific prefix for this IP, and we remove duplicate
+        ASN (path-prepending).  If no prefix is found, an empty list
+        is returned.
+        """
+        rib_filename = self._safe_rib_filename(ip, date)
         try:
             raw_path = self.bgp_aspath[rib_filename][ip]
             return list(utils.uniq(raw_path))
         except KeyError:
             return []
+
+    def get_prefix(self, ip, date):
+        """Returns the most specific prefix for the given IP (mostly useful
+        for debug).  Returns None if no prefix is found for the given
+        IP and date.
+        """
+        rib_filename = self._safe_rib_filename(ip, date)
+        try:
+            return self.bgp_aspath[rib_filename].get_key(ip)
+        except KeyError:
+            return None
+
+    def get_communities(self, ip, date):
+        """Returns the communities associated to the given IP and date.
+        Returns None if no prefix is found for the given IP and date.
+        """
+        rib_filename = self._safe_rib_filename(ip, date)
+        try:
+            return self.communities[rib_filename][ip]
+        except KeyError:
+            return None

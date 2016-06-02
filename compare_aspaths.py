@@ -339,6 +339,17 @@ class ASPathsAnalyser(object):
         logging.debug(M("BGP AS-path:        {}", bgp))
         logging.debug(M("Traceroute AS-path: {}", traceroute))
 
+    def debug_bgp(self, ip, date, bgp_path):
+        """Displays the prefix matched by the IP, and communities"""
+        prefix = self.bgp_loader.get_prefix(ip, date)
+        if prefix == None:
+            logging.debug("No BGP prefix found")
+            return
+        logging.debug(M("Prefix:             {}", prefix))
+        communities = self.bgp_loader.get_communities(ip, date)
+        if len(communities) > 0:
+            logging.debug(M("Communities:        {}", ' '.join(communities)))
+
     def classify_match(self, traceroute, trace_path, bgp_path):
         """Classify the relation between a traceroute AS path and a BGP AS path.
         Returns a set of BGPTracerouteMatch enum members"""
@@ -468,6 +479,7 @@ class ASPathsAnalyser(object):
         if not BGPTracerouteMatch.exact_match_only_known in matches:
             if logging.root.isEnabledFor(logging.DEBUG):
                 self.debug_aspaths(aspath, bgp_aspath)
+                self.debug_bgp(traceroute.flags['dstaddr'].encode(), date, bgp_aspath)
             if self.debug_traceroutes:
                 self.debug_traceroute(traceroute)
             if logging.root.isEnabledFor(logging.DEBUG) or self.debug_traceroutes:
